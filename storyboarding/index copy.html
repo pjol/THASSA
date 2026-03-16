@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thassa Protocol — Visual Flow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --line: #d8e3f0;
+      --line-strong: #b9cde3;
+      --paper: #f5f9ff;
+      --paper-2: #edf4fd;
+      --brand: #0284c7;
+      --brand-soft: #e0f2fe;
+      --green: #15803d;
+      --green-soft: #dcfce7;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --violet: #6d28d9;
+      --violet-soft: #ede9fe;
+      --mono: "IBM Plex Mono", Menlo, Consolas, monospace;
+      --sans: "Sora", "Segoe UI", "Trebuchet MS", sans-serif;
+      --radius-lg: 20px;
+      --radius-md: 12px;
+      --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: radial-gradient(circle at 18% -10%, #e8f4ff 0%, #ffffff 48%);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+
+    .page {
+      width: min(1240px, calc(100vw - 22px));
+      margin: 14px auto 34px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--bg);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .hero {
+      padding: 28px;
+      background:
+        linear-gradient(135deg, rgba(2, 132, 199, 0.12), rgba(2, 132, 199, 0) 60%),
+        linear-gradient(315deg, rgba(14, 165, 233, 0.11), rgba(14, 165, 233, 0) 55%),
+        #fff;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: end;
+    }
+
+    .kicker {
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--brand);
+      font-size: 11px;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(54px, 9vw, 108px);
+      line-height: 0.88;
+      letter-spacing: -0.05em;
+    }
+
+    .tagline {
+      margin: 10px 0 0;
+      font-size: clamp(20px, 2.4vw, 28px);
+      letter-spacing: -0.02em;
+      color: #0b5f8d;
+      font-weight: 600;
+    }
+
+    .meta {
+      display: grid;
+      gap: 8px;
+      justify-items: end;
+    }
+
+    .meta-chip {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 7px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      color: #1e293b;
+      white-space: nowrap;
+    }
+
+    .meta-chip strong { color: var(--brand); font-weight: 600; }
+
+    .section {
+      padding: 22px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 38px);
+      letter-spacing: -0.03em;
+    }
+
+    .section-note {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      max-width: 64ch;
+    }
+
+    .pill-row {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      font-family: var(--mono);
+      font-size: 10px;
+      border-radius: 999px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: #334155;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .map-shell {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: auto;
+      background: #fff;
+    }
+
+    svg {
+      width: 100%;
+      min-width: 1220px;
+      height: auto;
+      display: block;
+    }
+
+    .legend {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 11px;
+      font-family: var(--mono);
+      background: #fff;
+      color: #334155;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.blue { background: #0ea5e9; }
+    .dot.green { background: #22c55e; }
+    .dot.violet { background: #8b5cf6; }
+    .dot.amber { background: #f59e0b; }
+
+    .story {
+      padding: 22px;
+    }
+
+    .panel-row {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: #fff;
+      overflow: hidden;
+      min-height: 300px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .panel-head {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .panel-step {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--brand);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 4px;
+    }
+
+    .panel-head h3 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      line-height: 1.12;
+    }
+
+    .panel-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .panel-body {
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .shot {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+      padding: 8px;
+    }
+
+    .shot h4 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: #334155;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .shot ul {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 12px;
+      display: grid;
+      gap: 4px;
+      color: #0f172a;
+    }
+
+    .tx {
+      border: 1px solid #cde2f7;
+      border-radius: 10px;
+      background: #f0f8ff;
+      padding: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #1e293b;
+      line-height: 1.5;
+    }
+
+    .impact {
+      border-radius: 8px;
+      padding: 7px 8px;
+      border-left: 4px solid var(--brand);
+      background: #eef8ff;
+      font-size: 12px;
+      color: #0f172a;
+    }
+
+    @media (max-width: 1020px) {
+      .hero { grid-template-columns: 1fr; }
+      .meta { justify-items: start; }
+      .panel-row { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      .section, .story, .hero { padding: 16px; }
+      .page { width: calc(100vw - 10px); margin: 6px auto 24px; }
+      h1 { font-size: clamp(42px, 16vw, 70px); }
+      .tagline { font-size: 21px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="card hero">
+      <div>
+        <div class="kicker">Protocol Visual Design Doc</div>
+        <h1>Thassa Protocol</h1>
+        <p class="tagline">Oraclize Anything.</p>
+      </div>
+      <div class="meta">
+        <div class="meta-chip"><strong>Actors:</strong> requester, node, hub, verifier, client contract</div>
+        <div class="meta-chip"><strong>Paths:</strong> manual submit and auto bid fulfillment</div>
+      </div>
+    </section>
+
+    <section class="card section" id="flow-map">
+      <header class="section-head">
+        <div>
+          <h2 class="section-title">Protocol Arrow Flow Map</h2>
+          <p class="section-note">Single-page interaction map with minimal labels and clear directional arrows.</p>
+        </div>
+        <div class="pill-row">
+          <span class="pill">manual path</span>
+          <span class="pill">auto path</span>
+          <span class="pill">settlement path</span>
+        </div>
+      </header>
+
+      <div class="map-shell">
+        <svg viewBox="0 0 1260 590" role="img" aria-label="Thassa Protocol flow map">
+          <defs>
+            <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+              <path d="M0 0 L10 4 L0 8 Z" fill="#0284c7"></path>
+            </marker>
+            <marker id="arrow-green" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+              <path d="M0 0 L10 4 L0 8 Z" fill="#16a34a"></path>
+            </marker>
+            <marker id="arrow-violet" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto">
+              <path d="M0 0 L10 4 L0 8 Z" fill="#7c3aed"></path>
+            </marker>
+            <style>
+              .track-label {
+                font: 700 12px "IBM Plex Mono";
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+              }
+              .node {
+                stroke: #b9cde3;
+                stroke-width: 1.5;
+                rx: 12;
+                ry: 12;
+              }
+              .title {
+                font: 700 14px "Sora";
+                fill: #0f172a;
+              }
+              .sub {
+                font: 12px "IBM Plex Mono";
+                fill: #475569;
+              }
+              .edge-blue {
+                stroke: #0284c7;
+                stroke-width: 2.3;
+                fill: none;
+                marker-end: url(#arrow-blue);
+              }
+              .edge-green {
+                stroke: #16a34a;
+                stroke-width: 2.3;
+                fill: none;
+                marker-end: url(#arrow-green);
+              }
+              .edge-violet {
+                stroke: #7c3aed;
+                stroke-width: 2.1;
+                fill: none;
+                marker-end: url(#arrow-violet);
+              }
+              .edge-dash {
+                stroke: #64748b;
+                stroke-dasharray: 6 4;
+                stroke-width: 1.8;
+                fill: none;
+                marker-end: url(#arrow-violet);
+              }
+              .e-label {
+                font: 10px "IBM Plex Mono";
+                fill: #334155;
+              }
+            </style>
+          </defs>
+
+          <text class="track-label" x="46" y="96" fill="#0284c7">Manual Path</text>
+          <text class="track-label" x="46" y="286" fill="#16a34a">Auto Path</text>
+
+          <rect class="node" x="36" y="120" width="190" height="92" fill="#f8fafc"></rect>
+          <text class="title" x="50" y="151">Requester</text>
+          <text class="sub" x="50" y="173">submits manual update</text>
+          <text class="sub" x="50" y="190">or opens bid</text>
+
+          <rect class="node" x="288" y="120" width="190" height="92" fill="#f8fafc"></rect>
+          <text class="title" x="302" y="151">Node Worker</text>
+          <text class="sub" x="302" y="173">builds signedUpdate</text>
+          <text class="sub" x="302" y="190">from oracle spec</text>
+
+          <rect class="node" x="540" y="120" width="190" height="92" fill="#f0f9ff"></rect>
+          <text class="title" x="554" y="151">ThassaHub</text>
+          <text class="sub" x="554" y="173">validate + dispatch</text>
+          <text class="sub" x="554" y="190">settle token flows</text>
+
+          <rect class="node" x="790" y="24" width="220" height="78" fill="#f5f3ff"></rect>
+          <text class="title" x="804" y="54">Verifier Module</text>
+          <text class="sub" x="804" y="75">verifyUpdate(digest, update)</text>
+
+          <rect class="node" x="1034" y="120" width="190" height="92" fill="#f8fafc"></rect>
+          <text class="title" x="1048" y="151">Client Contract</text>
+          <text class="sub" x="1048" y="173">updateOracle(...)</text>
+          <text class="sub" x="1048" y="190">state finalized</text>
+
+          <rect class="node" x="744" y="330" width="480" height="92" fill="#fef3c7"></rect>
+          <text class="title" x="758" y="361">Payment Token Settlement</text>
+          <text class="sub" x="758" y="382">base fee, node payout, lockup return</text>
+          <text class="sub" x="758" y="399">bid close + accounting</text>
+
+          <path class="edge-blue" d="M226 165 L288 165"></path>
+          <text class="e-label" x="232" y="153">manual data request</text>
+
+          <path class="edge-blue" d="M478 165 L540 165"></path>
+          <text class="e-label" x="485" y="153">signed update payload</text>
+
+          <path class="edge-blue" d="M730 165 L1034 165"></path>
+          <text class="e-label" x="834" y="153">submitManualUpdate → callback</text>
+
+          <path class="edge-dash" d="M640 120 C670 76,736 52,790 62"></path>
+          <text class="e-label" x="680" y="69">verify digest</text>
+
+          <path class="edge-dash" d="M886 102 C852 118,770 120,730 116"></path>
+          <text class="e-label" x="800" y="109">valid / invalid</text>
+
+          <path class="edge-green" d="M128 212 C220 284,450 284,540 212"></path>
+          <text class="e-label" x="254" y="289">placeBid(client, amount)</text>
+
+          <path class="edge-green" d="M540 212 C520 292,500 292,478 212"></path>
+          <text class="e-label" x="470" y="304">BidPlaced scan</text>
+
+          <path class="edge-green" d="M478 228 C500 310,520 310,540 228"></path>
+          <text class="e-label" x="502" y="321">submitAutoUpdate</text>
+
+          <path class="edge-green" d="M730 212 L1034 212"></path>
+          <text class="e-label" x="846" y="231">auto callback</text>
+
+          <path class="edge-violet" d="M636 212 C668 268,736 304,828 330"></path>
+          <text class="e-label" x="705" y="278">settlement path</text>
+        </svg>
+      </div>
+
+      <div class="legend">
+        <span class="legend-item"><span class="dot blue"></span>manual submission arrows</span>
+        <span class="legend-item"><span class="dot green"></span>auto bid fulfillment arrows</span>
+        <span class="legend-item"><span class="dot violet"></span>token settlement arrows</span>
+        <span class="legend-item"><span class="dot amber"></span>shared economic state</span>
+      </div>
+    </section>
+
+    <section class="card story" id="hero-3-panel">
+      <header class="section-head">
+        <div>
+          <h2 class="section-title">Hero Moment · 3 Panels</h2>
+          <p class="section-note">Minimal narrative: intent, verification, finality.</p>
+        </div>
+      </header>
+
+      <div class="panel-row">
+        <article class="panel">
+          <header class="panel-head">
+            <div class="panel-step">Panel 1</div>
+            <h3>Intent</h3>
+            <p>A requester opens demand for fresh oracle state.</p>
+          </header>
+          <div class="panel-body">
+            <div class="shot">
+              <h4>Action</h4>
+              <ul>
+                <li>Requester funds and submits request/bid.</li>
+                <li>Hub records state and emits events.</li>
+              </ul>
+            </div>
+            <div class="tx">placeBid(...) or submitManualUpdate(...)</div>
+            <div class="impact">Demand is now explicit on-chain state.</div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head">
+            <div class="panel-step">Panel 2</div>
+            <h3>Verification</h3>
+            <p>Node fulfills and hub runs strict checks.</p>
+          </header>
+          <div class="panel-body">
+            <div class="shot">
+              <h4>Checks</h4>
+              <ul>
+                <li>query/shape/model commitments match oracle spec.</li>
+                <li>digest verifies via verifier module.</li>
+                <li>expiry + replay rules enforced.</li>
+              </ul>
+            </div>
+            <div class="tx">verifyUpdate(digest, signedUpdate) → true</div>
+            <div class="impact">Only commitment-consistent payloads can pass.</div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-head">
+            <div class="panel-step">Panel 3</div>
+            <h3>Finality</h3>
+            <p>Callback executes and economics settle.</p>
+          </header>
+          <div class="panel-body">
+            <div class="shot">
+              <h4>Result</h4>
+              <ul>
+                <li>Client callback updates contract state.</li>
+                <li>Hub closes bid and marks digest consumed.</li>
+                <li>Fee, payout, and lockup settlement complete.</li>
+              </ul>
+            </div>
+            <div class="tx">updateOracle(...) + token transfers</div>
+            <div class="impact">Data and incentives finalize in one deterministic flow.</div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

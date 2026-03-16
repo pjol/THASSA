@@ -1,0 +1,115 @@
+THASSA DATA SHAPING GUIDE
+
+Goal:
+Translate structured LLM JSON into ABI-encoded `callbackData` and produce a signed
+`SignedUpdate` payload that passes hub validation.
+
+------------------------------------------------------------------------------
+0) Contract bindings (current)
+------------------------------------------------------------------------------
+
+Client oracle now stores full strings in `oracleSpec()`:
+- `query: string`
+- `expectedShape: string`
+- `model: string`
+- `clientVersion: uint64`
+
+Hub update payload still carries hashes:
+- `queryHash = keccak256(bytes(query))`
+- `shapeHash = keccak256(bytes(expectedShape))`
+- `modelHash = keccak256(bytes(model))`
+
+Important:
+- Hashes must be derived from the exact raw strings stored in the oracle.
+- Do not hash a locally re-formatted shape string unless it is byte-for-byte identical
+  to `oracle.expectedShape()`.
+
+------------------------------------------------------------------------------
+1) Shape format (ABI Shape DSL)
+------------------------------------------------------------------------------
+
+Expected onchain shape is an ABI-like DSL string (not JSON):
+
+    type        := primitive | tuple | array
+    primitive   := bool | address | string | bytes | bytes<M> | uint<M> | int<M>
+    tuple       := tuple(field:type,field:type,...)
+    array       := type[] | type[N]
+    field       := [a-zA-Z_][a-zA-Z0-9_]*
+
+Examples:
+
+    tuple(nav:uint256,asOf:uint64)
+    tuple(symbol:string,prices:uint256[],meta:tuple(source:string,blockNumber:uint64))
+    tuple(points:tuple(x:int256,y:int256)[])
+
+------------------------------------------------------------------------------
+2) JSON -> ABI translation rules
+------------------------------------------------------------------------------
+
+- JSON object maps to `tuple(...)`.
+- JSON array maps to `type[]` or `type[N]`.
+- Encoding order follows tuple field order.
+- Keys must match expected fields exactly.
+- Missing keys, extra keys, nulls, and out-of-range numeric values are invalid.
+- `bytes`/`bytes<M>` values should be hex (`0x`-prefixed).
+
+------------------------------------------------------------------------------
+3) End-to-end node flow
+------------------------------------------------------------------------------
+
+1. Read/receive full `query`, `expectedShape`, and `model` strings.
+2. Run LLM with structured output constraints for the desired output object.
+3. ABI-encode `callbackData` using the declared field/type order.
+4. Compute:
+   - `queryHash = keccak256(bytes(query))`
+   - `shapeHash = keccak256(bytes(expectedShape))`
+   - `modelHash = keccak256(bytes(model))`
+5. Build and sign `SignedUpdate` digest for hub submission.
+
+------------------------------------------------------------------------------
+4) Encoding example
+------------------------------------------------------------------------------
+
+Example JSON:
+
+    {
+      "winner_name": "Donald J. Trump",
+      "election_date_timestamp_utc": 1730764800,
+      "electoral_vote_count_for_winner": 312,
+      "electoral_vote_count_total": 538
+    }
+
+Expected shape string:
+
+    tuple(winner_name:string,election_date_timestamp_utc:uint32,electoral_vote_count_for_winner:uint16,electoral_vote_count_total:uint16)
+
+Callback encoding:
+
+    bytes memory callbackData = abi.encode(
+        "Donald J. Trump",
+        uint32(1730764800),
+        uint16(312),
+        uint16(538)
+    );
+
+Contract decode:
+
+    (
+        string memory winnerName,
+        uint32 electionDateUtc,
+        uint16 winnerVotes,
+        uint16 totalVotes
+    ) = abi.decode(callbackData, (string, uint32, uint16, uint16));
+
+------------------------------------------------------------------------------
+5) Canonicalization recommendation
+------------------------------------------------------------------------------
+
+Because hashing is byte-level, use a stable formatting convention:
+- lowercase type tokens
+- no unnecessary whitespace
+- stable field ordering
+
+Recommended:
+
+    tuple(winner_name:string,election_date_timestamp_utc:uint32,electoral_vote_count_for_winner:uint16,electoral_vote_count_total:uint16)

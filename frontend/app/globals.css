@@ -1,0 +1,416 @@
+:root {
+  --bg-0: #f0ece8;
+  --bg-1: #d7e9ec;
+  --bg-2: #f4d8be;
+  --ink: #171717;
+  --muted: #4f5a61;
+  --card: rgba(255, 255, 255, 0.78);
+  --stroke: rgba(0, 0, 0, 0.1);
+  --accent: #0f7f8b;
+  --accent-2: #ff7a2f;
+  --ok: #117a38;
+  --error: #a91b1b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-display), sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(50rem 50rem at 12% 20%, color-mix(in srgb, var(--bg-2) 70%, white), transparent 60%),
+    radial-gradient(40rem 40rem at 90% 0%, color-mix(in srgb, var(--bg-1) 85%, white), transparent 50%),
+    linear-gradient(130deg, var(--bg-0), #e7efe9 60%, #e6dbcf);
+}
+
+.page {
+  position: relative;
+  padding: 2rem 1.2rem 3rem;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.ambient {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.34;
+  pointer-events: none;
+  z-index: -1;
+  animation: float 9s ease-in-out infinite;
+}
+
+.ambientA {
+  width: 22rem;
+  height: 22rem;
+  left: -6rem;
+  top: 7rem;
+  background: color-mix(in srgb, var(--accent) 62%, white);
+}
+
+.ambientB {
+  width: 24rem;
+  height: 24rem;
+  right: -7rem;
+  top: 18rem;
+  animation-delay: 1.2s;
+  background: color-mix(in srgb, var(--accent-2) 58%, white);
+}
+
+.hero {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--card) 85%, white),
+    color-mix(in srgb, var(--card) 55%, #fff4e8)
+  );
+  border: 1px solid var(--stroke);
+  border-radius: 1.4rem;
+  padding: 1.3rem 1.35rem;
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.09);
+}
+
+.heroTag {
+  margin: 0;
+  letter-spacing: 0.12em;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--accent) 75%, black);
+}
+
+.hero h1 {
+  margin: 0.35rem 0 0.45rem;
+  font-size: clamp(1.7rem, 3vw, 2.7rem);
+  line-height: 1.05;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 70ch;
+}
+
+.heroMeta {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  color: color-mix(in srgb, var(--accent) 80%, black);
+  background: color-mix(in srgb, white 72%, var(--accent) 28%);
+  border-radius: 999px;
+  padding: 0.26rem 0.72rem;
+  font-size: 0.8rem;
+}
+
+.grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 1.2rem;
+  padding: 1rem;
+  box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.07);
+  backdrop-filter: blur(5px);
+  min-width: 0;
+}
+
+.card h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.weatherCard {
+  grid-column: span 12;
+}
+
+.actionCard {
+  grid-column: span 12;
+}
+
+.bindingsCard {
+  grid-column: span 12;
+}
+
+.logCard {
+  grid-column: span 12;
+  height: 22rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.6rem;
+}
+
+.statusLine {
+  margin: 0.2rem 0 0.9rem;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.weatherGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.metric {
+  border: 1px solid color-mix(in srgb, var(--accent) 17%, var(--stroke));
+  border-radius: 0.85rem;
+  padding: 0.64rem 0.68rem;
+  background: color-mix(in srgb, var(--accent) 4%, white);
+}
+
+.metric span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.metric strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.02rem;
+}
+
+label {
+  display: grid;
+  gap: 0.32rem;
+  margin-top: 0.9rem;
+  margin-bottom: 0.9rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+input {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--stroke));
+  border-radius: 0.72rem;
+  font: inherit;
+  padding: 0.64rem 0.72rem;
+  background: color-mix(in srgb, white 88%, var(--accent) 12%);
+  color: var(--ink);
+}
+
+input:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
+}
+
+.metaPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.metaPanel div {
+  border: 1px solid color-mix(in srgb, var(--accent-2) 24%, var(--stroke));
+  border-radius: 0.72rem;
+  padding: 0.58rem 0.64rem;
+  background: color-mix(in srgb, var(--accent-2) 7%, white);
+}
+
+.metaPanel span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.metaPanel strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.95rem;
+}
+
+button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primaryButton {
+  width: 100%;
+  border-radius: 0.72rem;
+  padding: 0.72rem 0.9rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 80%, black),
+    color-mix(in srgb, var(--accent-2) 55%, black)
+  );
+  color: #fff;
+  font-weight: 500;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.ghostButton {
+  border-radius: 0.64rem;
+  padding: 0.38rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--stroke));
+  background: color-mix(in srgb, var(--accent) 9%, white);
+  color: color-mix(in srgb, var(--accent) 80%, black);
+}
+
+.mono {
+  font-family: var(--font-mono), monospace;
+}
+
+.compact {
+  margin-top: 0.5rem;
+  padding: 0.52rem 0.6rem;
+  border-radius: 0.58rem;
+  background: rgba(0, 0, 0, 0.04);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.logList {
+  list-style: none;
+  padding: 0;
+  margin: 0.55rem 0 0;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.logViewport {
+  min-height: 0;
+  margin-top: 0.2rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.25rem;
+}
+
+.logItem {
+  display: grid;
+  gap: 0.22rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.5rem 0.62rem;
+  font-size: 0.84rem;
+  overflow: hidden;
+}
+
+.logItem.info {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.logItem.success {
+  border-left: 3px solid color-mix(in srgb, var(--ok) 75%, transparent);
+}
+
+.logItem.error {
+  border-left: 3px solid color-mix(in srgb, var(--error) 80%, transparent);
+}
+
+.logTime {
+  font-family: var(--font-mono), monospace;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.logItem span:last-child {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.configErrorCard {
+  margin-top: 2rem;
+  border: 1px solid color-mix(in srgb, var(--error) 38%, var(--stroke));
+  background: color-mix(in srgb, white 78%, #ffdada);
+  border-radius: 1rem;
+  padding: 1rem;
+  max-width: 46rem;
+}
+
+.configErrorCard h1 {
+  margin: 0 0 0.35rem;
+}
+
+.configErrorCard ul {
+  margin: 0.4rem 0 0.8rem;
+  padding-left: 1.2rem;
+}
+
+.reveal {
+  animation: reveal 380ms ease-out both;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-14px) scale(1.06);
+  }
+}
+
+@media (min-width: 900px) {
+  .page {
+    padding-top: 2.4rem;
+  }
+
+  .weatherCard {
+    grid-column: span 8;
+  }
+
+  .actionCard {
+    grid-column: span 4;
+  }
+
+  .bindingsCard {
+    grid-column: span 7;
+  }
+
+  .logCard {
+    grid-column: span 5;
+    height: 25rem;
+  }
+
+  .weatherGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
