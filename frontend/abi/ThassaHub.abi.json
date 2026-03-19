@@ -66,7 +66,7 @@
       {
         "name": "update",
         "type": "tuple",
-        "internalType": "struct IThassaHub.SignedUpdate",
+        "internalType": "struct IThassaHub.UpdateEnvelope",
         "components": [
           {
             "name": "client",
@@ -99,6 +99,11 @@
             "internalType": "uint64"
           },
           {
+            "name": "requestTimestamp",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
             "name": "expiry",
             "type": "uint64",
             "internalType": "uint64"
@@ -109,14 +114,9 @@
             "internalType": "uint256"
           },
           {
-            "name": "signer",
+            "name": "fulfiller",
             "type": "address",
             "internalType": "address"
-          },
-          {
-            "name": "signature",
-            "type": "bytes",
-            "internalType": "bytes"
           }
         ]
       },
@@ -321,7 +321,7 @@
       {
         "name": "update",
         "type": "tuple",
-        "internalType": "struct IThassaHub.SignedUpdate",
+        "internalType": "struct IThassaHub.UpdateEnvelope",
         "components": [
           {
             "name": "client",
@@ -354,6 +354,11 @@
             "internalType": "uint64"
           },
           {
+            "name": "requestTimestamp",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
             "name": "expiry",
             "type": "uint64",
             "internalType": "uint64"
@@ -364,12 +369,29 @@
             "internalType": "uint256"
           },
           {
-            "name": "signer",
+            "name": "fulfiller",
             "type": "address",
             "internalType": "address"
+          }
+        ]
+      },
+      {
+        "name": "proof",
+        "type": "tuple",
+        "internalType": "struct IThassaHub.ProofEnvelope",
+        "components": [
+          {
+            "name": "scheme",
+            "type": "uint8",
+            "internalType": "uint8"
           },
           {
-            "name": "signature",
+            "name": "publicValues",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
             "type": "bytes",
             "internalType": "bytes"
           }
@@ -386,7 +408,7 @@
       {
         "name": "update",
         "type": "tuple",
-        "internalType": "struct IThassaHub.SignedUpdate",
+        "internalType": "struct IThassaHub.UpdateEnvelope",
         "components": [
           {
             "name": "client",
@@ -419,6 +441,11 @@
             "internalType": "uint64"
           },
           {
+            "name": "requestTimestamp",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
             "name": "expiry",
             "type": "uint64",
             "internalType": "uint64"
@@ -429,12 +456,29 @@
             "internalType": "uint256"
           },
           {
-            "name": "signer",
+            "name": "fulfiller",
             "type": "address",
             "internalType": "address"
+          }
+        ]
+      },
+      {
+        "name": "proof",
+        "type": "tuple",
+        "internalType": "struct IThassaHub.ProofEnvelope",
+        "components": [
+          {
+            "name": "scheme",
+            "type": "uint8",
+            "internalType": "uint8"
           },
           {
-            "name": "signature",
+            "name": "publicValues",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
             "type": "bytes",
             "internalType": "bytes"
           }
@@ -487,13 +531,19 @@
         "internalType": "address"
       },
       {
-        "name": "node",
+        "name": "submitter",
         "type": "address",
         "indexed": true,
         "internalType": "address"
       },
       {
         "name": "client",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "fulfiller",
         "type": "address",
         "indexed": false,
         "internalType": "address"
@@ -617,7 +667,7 @@
         "internalType": "address"
       },
       {
-        "name": "signer",
+        "name": "fulfiller",
         "type": "address",
         "indexed": true,
         "internalType": "address"
@@ -693,6 +743,22 @@
   },
   {
     "type": "error",
+    "name": "AutoFlowFulfillerMismatch",
+    "inputs": [
+      {
+        "name": "expectedFulfiller",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "caller",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "BidClientMismatch",
     "inputs": [
       {
@@ -717,6 +783,22 @@
         "internalType": "uint256"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "ClientAlreadyFulfilled",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidFulfillmentMarker",
+    "inputs": []
   },
   {
     "type": "error",
@@ -807,7 +889,29 @@
   },
   {
     "type": "error",
-    "name": "SignatureExpired",
+    "name": "SpecMismatch",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "UnfulfilledResult",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "UpdateExpired",
     "inputs": [
       {
         "name": "expiry",
@@ -823,12 +927,17 @@
   },
   {
     "type": "error",
-    "name": "SpecMismatch",
+    "name": "UpdateTimestampInFuture",
     "inputs": [
       {
-        "name": "client",
-        "type": "address",
-        "internalType": "address"
+        "name": "requestTimestamp",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "currentTimestamp",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ]
   },

@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pjol/THASSA/node/internal/config"
 	"github.com/pjol/THASSA/node/internal/format"
+	"github.com/pjol/THASSA/node/internal/fulfillment"
 	"github.com/pjol/THASSA/node/internal/shape"
 	"github.com/pjol/THASSA/node/internal/signing"
 )
@@ -30,53 +31,61 @@ type OpenAIClient interface {
 }
 
 type UpdateRequest struct {
-	Client        string            `json:"client"`
-	ThassaHub     string            `json:"thassaHub,omitempty"`
-	ChainID       uint64            `json:"chainId,omitempty"`
-	BidID         uint64            `json:"bidId,omitempty"`
-	AutoFlow      bool              `json:"autoFlow,omitempty"`
-	ClientVersion uint64            `json:"clientVersion,omitempty"`
-	Expiry        uint64            `json:"expiry,omitempty"`
-	TTLSeconds    uint64            `json:"ttlSeconds,omitempty"`
-	Nonce         uint64            `json:"nonce,omitempty"`
-	Query         string            `json:"query"`
-	InputData     map[string]any    `json:"inputData,omitempty"`
-	ExpectedShape string            `json:"expectedShape,omitempty"`
-	Shape         []shape.FieldSpec `json:"shape,omitempty"`
-	OutputShape   []shape.FieldSpec `json:"outputShape,omitempty"`
-	Model         string            `json:"model,omitempty"`
-	OpenAIModel   string            `json:"openAIModel,omitempty"`
-	QueryHash     string            `json:"queryHash,omitempty"`
-	ShapeHash     string            `json:"shapeHash,omitempty"`
-	ModelHash     string            `json:"modelHash,omitempty"`
+	Client           string            `json:"client"`
+	ThassaHub        string            `json:"thassaHub,omitempty"`
+	ChainID          uint64            `json:"chainId,omitempty"`
+	BidID            uint64            `json:"bidId,omitempty"`
+	AutoFlow         bool              `json:"autoFlow,omitempty"`
+	ClientVersion    uint64            `json:"clientVersion,omitempty"`
+	RequestTimestamp uint64            `json:"requestTimestamp,omitempty"`
+	Expiry           uint64            `json:"expiry,omitempty"`
+	TTLSeconds       uint64            `json:"ttlSeconds,omitempty"`
+	Nonce            uint64            `json:"nonce,omitempty"`
+	Query            string            `json:"query"`
+	InputData        map[string]any    `json:"inputData,omitempty"`
+	ExpectedShape    string            `json:"expectedShape,omitempty"`
+	Shape            []shape.FieldSpec `json:"shape,omitempty"`
+	OutputShape      []shape.FieldSpec `json:"outputShape,omitempty"`
+	Model            string            `json:"model,omitempty"`
+	OpenAIModel      string            `json:"openAIModel,omitempty"`
+	QueryHash        string            `json:"queryHash,omitempty"`
+	ShapeHash        string            `json:"shapeHash,omitempty"`
+	ModelHash        string            `json:"modelHash,omitempty"`
 }
 
 type updateResponse struct {
-	OracleSpec       oracleSpecJSON    `json:"oracleSpec"`
-	OpenAIModel      string            `json:"openAIModel"`
-	Signer           string            `json:"signer"`
-	ExpectedShape    string            `json:"expectedShape"`
-	CanonicalShape   string            `json:"canonicalShape"`
-	StructuredOutput map[string]any    `json:"structuredOutput"`
-	RawModelJSON     string            `json:"rawModelJson"`
-	CallbackData     string            `json:"callbackData"`
-	Digest           string            `json:"digest"`
-	SignedUpdate     signedUpdateJSON  `json:"signedUpdate"`
-	SigningContext   signingContext    `json:"signingContext"`
-	HashCommitments  hashCommitmentSet `json:"hashCommitments"`
+	OracleSpec       oracleSpecJSON     `json:"oracleSpec"`
+	OpenAIModel      string             `json:"openAIModel"`
+	Fulfiller        string             `json:"fulfiller"`
+	ExpectedShape    string             `json:"expectedShape"`
+	CanonicalShape   string             `json:"canonicalShape"`
+	StructuredOutput map[string]any     `json:"structuredOutput"`
+	RawModelJSON     string             `json:"rawModelJson"`
+	CallbackData     string             `json:"callbackData"`
+	Digest           string             `json:"digest"`
+	UpdateEnvelope   updateEnvelopeJSON `json:"updateEnvelope"`
+	ProofEnvelope    proofEnvelopeJSON  `json:"proofEnvelope"`
+	SigningContext   signingContext     `json:"signingContext"`
+	HashCommitments  hashCommitmentSet  `json:"hashCommitments"`
 }
 
-type signedUpdateJSON struct {
-	Client        string `json:"client"`
-	CallbackData  string `json:"callbackData"`
-	QueryHash     string `json:"queryHash"`
-	ShapeHash     string `json:"shapeHash"`
-	ModelHash     string `json:"modelHash"`
-	ClientVersion uint64 `json:"clientVersion"`
-	Expiry        uint64 `json:"expiry"`
-	Nonce         string `json:"nonce"`
-	Signer        string `json:"signer"`
-	Signature     string `json:"signature"`
+type updateEnvelopeJSON struct {
+	Client           string `json:"client"`
+	CallbackData     string `json:"callbackData"`
+	QueryHash        string `json:"queryHash"`
+	ShapeHash        string `json:"shapeHash"`
+	ModelHash        string `json:"modelHash"`
+	ClientVersion    uint64 `json:"clientVersion"`
+	RequestTimestamp uint64 `json:"requestTimestamp"`
+	Expiry           uint64 `json:"expiry"`
+	Nonce            string `json:"nonce"`
+	Fulfiller        string `json:"fulfiller"`
+}
+
+type proofEnvelopeJSON struct {
+	Scheme       uint8  `json:"scheme"`
+	PublicValues string `json:"publicValues"`
+	Proof        string `json:"proof"`
 }
 
 type oracleSpecJSON struct {
@@ -173,8 +182,18 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, jsonError{Error: fmt.Sprintf("invalid shape: %v", err)})
 		return
 	}
+	if shape.HasField(outputShape, shape.FulfillmentFieldName) {
+		writeJSON(
+			w,
+			http.StatusBadRequest,
+			jsonError{Error: fmt.Sprintf("shape must not include reserved field %q; it is added automatically", shape.FulfillmentFieldName)},
+		)
+		return
+	}
 
-	schema, err := shape.BuildJSONSchema(outputShape)
+	llmShape := shape.WithFulfillmentField(outputShape)
+
+	schema, err := shape.BuildJSONSchema(llmShape)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, jsonError{Error: fmt.Sprintf("build schema: %v", err)})
 		return
@@ -216,12 +235,17 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.RequestTimeout)
 	defer cancel()
 
-	shapedOutput, rawModelJSON, err := s.openai.GenerateStructuredOutput(
+	result, err := fulfillment.GenerateUntilFulfilled(
 		ctx,
+		s.openai,
 		openAIModel,
 		req.Query,
 		req.InputData,
 		schema,
+		llmShape,
+		func(format string, args ...any) {
+			log.Printf("[UPDATE] "+format, args...)
+		},
 	)
 	if err != nil {
 		log.Printf("openai request failed: %v", err)
@@ -229,9 +253,20 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	shapedOutput := result.ShapedOutput
+	rawModelJSON := result.RawModelJSON
+	llmFulfilled := result.Fulfilled
+	log.Printf("[UPDATE] structured output fulfilled after attempts=%d", result.Attempts)
+
 	callbackData, err := s.formatter.EncodeCallbackData(outputShape, shapedOutput)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, jsonError{Error: fmt.Sprintf("format callbackData: %v", err)})
+		return
+	}
+
+	publicValues, err := format.EncodeFulfillmentPublicValues(llmFulfilled)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, jsonError{Error: fmt.Sprintf("encode proof public values: %v", err)})
 		return
 	}
 
@@ -277,12 +312,16 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expiry := req.Expiry
+	requestTimestamp := req.RequestTimestamp
+	if requestTimestamp == 0 {
+		requestTimestamp = uint64(time.Now().Unix())
+	}
 	if expiry == 0 {
 		ttl := req.TTLSeconds
 		if ttl == 0 {
 			ttl = s.cfg.DefaultTTLSeconds
 		}
-		expiry = uint64(time.Now().Unix()) + ttl
+		expiry = requestTimestamp + ttl
 	}
 
 	nonce := req.Nonce
@@ -296,15 +335,16 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		BidID:      new(big.Int).SetUint64(req.BidID),
 		AutoFlow:   req.AutoFlow,
 		Payload: signing.UpdatePayload{
-			Client:        common.HexToAddress(req.Client),
-			CallbackData:  callbackData,
-			QueryHash:     queryHash,
-			ShapeHash:     shapeHash,
-			ModelHash:     modelHash,
-			ClientVersion: clientVersion,
-			Expiry:        expiry,
-			Nonce:         new(big.Int).SetUint64(nonce),
-			Signer:        s.signer.Address(),
+			Client:           common.HexToAddress(req.Client),
+			CallbackData:     callbackData,
+			QueryHash:        queryHash,
+			ShapeHash:        shapeHash,
+			ModelHash:        modelHash,
+			ClientVersion:    clientVersion,
+			RequestTimestamp: requestTimestamp,
+			Expiry:           expiry,
+			Nonce:            new(big.Int).SetUint64(nonce),
+			Fulfiller:        s.signer.Address(),
 		},
 	})
 	if err != nil {
@@ -320,24 +360,29 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 			ClientVersion: clientVersion,
 		},
 		OpenAIModel:      openAIModel,
-		Signer:           s.signer.Address().Hex(),
+		Fulfiller:        s.signer.Address().Hex(),
 		ExpectedShape:    expectedShape,
 		CanonicalShape:   canonicalShape,
 		StructuredOutput: shapedOutput,
 		RawModelJSON:     rawModelJSON,
 		CallbackData:     "0x" + hex.EncodeToString(callbackData),
 		Digest:           signResult.Digest.Hex(),
-		SignedUpdate: signedUpdateJSON{
-			Client:        common.HexToAddress(req.Client).Hex(),
-			CallbackData:  "0x" + hex.EncodeToString(callbackData),
-			QueryHash:     queryHash.Hex(),
-			ShapeHash:     shapeHash.Hex(),
-			ModelHash:     modelHash.Hex(),
-			ClientVersion: clientVersion,
-			Expiry:        expiry,
-			Nonce:         new(big.Int).SetUint64(nonce).String(),
-			Signer:        s.signer.Address().Hex(),
-			Signature:     "0x" + hex.EncodeToString(signResult.Signature),
+		UpdateEnvelope: updateEnvelopeJSON{
+			Client:           common.HexToAddress(req.Client).Hex(),
+			CallbackData:     "0x" + hex.EncodeToString(callbackData),
+			QueryHash:        queryHash.Hex(),
+			ShapeHash:        shapeHash.Hex(),
+			ModelHash:        modelHash.Hex(),
+			ClientVersion:    clientVersion,
+			RequestTimestamp: requestTimestamp,
+			Expiry:           expiry,
+			Nonce:            new(big.Int).SetUint64(nonce).String(),
+			Fulfiller:        s.signer.Address().Hex(),
+		},
+		ProofEnvelope: proofEnvelopeJSON{
+			Scheme:       1,
+			PublicValues: "0x" + hex.EncodeToString(publicValues),
+			Proof:        "0x" + hex.EncodeToString(signResult.Signature),
 		},
 		SigningContext: signingContext{
 			ThassaHub: common.HexToAddress(hubAddress).Hex(),

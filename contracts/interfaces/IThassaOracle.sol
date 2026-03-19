@@ -18,6 +18,7 @@ interface IThassaOracle {
     function query() external view returns (string memory);
     function expectedShape() external view returns (string memory);
     function model() external view returns (string memory);
+    function fulfilled() external view returns (bool);
     function oracleSpec() external view returns (OracleSpec memory);
     function placeBid(uint256 bidAmount) external returns (uint256 bidId);
     function updateOracle(bytes calldata callbackData) external;

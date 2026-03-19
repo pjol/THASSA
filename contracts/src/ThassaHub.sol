@@ -15,7 +15,7 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     bytes32 private constant UPDATE_TYPEHASH =
-        keccak256("SignedUpdate(address hub,uint256 chainId,bytes32 payloadHash,uint256 bidId,bool autoFlow)");
+        keccak256("ProofUpdate(address hub,uint256 chainId,bytes32 payloadHash,uint256 bidId,bool autoFlow)");
 
     IERC20 private immutable _paymentToken;
 
@@ -121,17 +121,25 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
         emit BidCancelled(bidId, msg.sender, bidAmount);
     }
 
-    function submitManualUpdate(SignedUpdate calldata update) external override nonReentrant {
-        bytes32 digest = _validateAndConsumeUpdate(update, 0, false);
+    function submitManualUpdate(UpdateEnvelope calldata update, ProofEnvelope calldata proof)
+        external
+        override
+        nonReentrant
+    {
+        bytes32 digest = _validateAndConsumeUpdate(update, proof, 0, false);
 
         _paymentToken.safeTransferFrom(msg.sender, feeCollector, baseProtocolFee);
 
         bool callbackSuccess = _dispatchUpdate(update.client, update.callbackData);
 
-        emit ManualUpdateSubmitted(msg.sender, update.client, update.signer, digest, callbackSuccess);
+        emit ManualUpdateSubmitted(msg.sender, update.client, update.fulfiller, digest, callbackSuccess);
     }
 
-    function submitAutoUpdate(uint256 bidId, SignedUpdate calldata update) external override nonReentrant {
+    function submitAutoUpdate(uint256 bidId, UpdateEnvelope calldata update, ProofEnvelope calldata proof)
+        external
+        override
+        nonReentrant
+    {
         Bid storage bid = _bids[bidId];
         if (!bid.isOpen) {
             revert BidNotOpen(bidId);
@@ -139,10 +147,13 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
         if (bid.client != update.client) {
             revert BidClientMismatch(bid.client, update.client);
         }
+        if (msg.sender != update.fulfiller) {
+            revert AutoFlowFulfillerMismatch(update.fulfiller, msg.sender);
+        }
 
         _paymentToken.safeTransferFrom(msg.sender, address(this), autoFlowLockup);
 
-        bytes32 digest = _validateAndConsumeUpdate(update, bidId, true);
+        bytes32 digest = _validateAndConsumeUpdate(update, proof, bidId, true);
         bid.isOpen = false;
 
         bool callbackSuccess = _dispatchUpdate(update.client, update.callbackData);
@@ -156,11 +167,12 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
         _paymentToken.safeTransfer(msg.sender, autoFlowLockup);
 
         emit AutoUpdateSubmitted(
-            bidId, bid.requester, msg.sender, update.client, digest, callbackSuccess, baseProtocolFee, nodePayout
+            bidId, bid.requester, msg.sender, update.client, update.fulfiller, digest, callbackSuccess, baseProtocolFee,
+            nodePayout
         );
     }
 
-    function computeUpdateDigest(SignedUpdate calldata update, uint256 bidId, bool autoFlow)
+    function computeUpdateDigest(UpdateEnvelope calldata update, uint256 bidId, bool autoFlow)
         external
         view
         override
@@ -169,25 +181,34 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
         return _computeUpdateDigest(update, bidId, autoFlow);
     }
 
-    function _validateAndConsumeUpdate(SignedUpdate calldata update, uint256 bidId, bool autoFlow)
+    function _validateAndConsumeUpdate(
+        UpdateEnvelope calldata update,
+        ProofEnvelope calldata proof,
+        uint256 bidId,
+        bool autoFlow
+    )
         internal
         returns (bytes32 digest)
     {
-        if (update.client == address(0) || update.signer == address(0)) {
+        if (update.client == address(0) || update.fulfiller == address(0)) {
             revert ZeroAddress();
         }
+        if (update.requestTimestamp > uint64(block.timestamp)) {
+            revert UpdateTimestampInFuture(update.requestTimestamp, uint64(block.timestamp));
+        }
         if (update.expiry < block.timestamp) {
-            revert SignatureExpired(update.expiry, uint64(block.timestamp));
+            revert UpdateExpired(update.expiry, uint64(block.timestamp));
         }
 
         _validateOracleSpec(update);
+        _requireFulfilledResult(update.client, proof.publicValues);
 
         digest = _computeUpdateDigest(update, bidId, autoFlow);
         if (consumedDigests[digest]) {
             revert Replay(digest);
         }
 
-        bool isValidProof = IThassaVerifier(verifierModule).verifyUpdate(digest, update);
+        bool isValidProof = IThassaVerifier(verifierModule).verifyUpdate(digest, bidId, autoFlow, update, proof);
         if (!isValidProof) {
             revert InvalidProof(verifierModule);
         }
@@ -195,7 +216,7 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
         consumedDigests[digest] = true;
     }
 
-    function _validateOracleSpec(SignedUpdate calldata update) internal view {
+    function _validateOracleSpec(UpdateEnvelope calldata update) internal view {
         IThassaOracle.OracleSpec memory spec = IThassaOracle(update.client).oracleSpec();
 
         bool matchesSpec = keccak256(bytes(spec.query)) == update.queryHash
@@ -207,7 +228,25 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
         }
     }
 
-    function _computeUpdateDigest(SignedUpdate calldata update, uint256 bidId, bool autoFlow)
+    function _requireFulfilledResult(address client, bytes calldata publicValues) internal pure {
+        if (publicValues.length < 32) {
+            revert InvalidFulfillmentMarker();
+        }
+
+        uint256 markerWord;
+        assembly {
+            markerWord := calldataload(publicValues.offset)
+        }
+
+        if (markerWord > 1) {
+            revert InvalidFulfillmentMarker();
+        }
+        if (markerWord == 0) {
+            revert UnfulfilledResult(client);
+        }
+    }
+
+    function _computeUpdateDigest(UpdateEnvelope calldata update, uint256 bidId, bool autoFlow)
         internal
         view
         returns (bytes32)
@@ -220,9 +259,10 @@ contract ThassaHub is IThassaHub, Ownable, ReentrancyGuard {
                 update.shapeHash,
                 update.modelHash,
                 update.clientVersion,
+                update.requestTimestamp,
                 update.expiry,
                 update.nonce,
-                update.signer
+                update.fulfiller
             )
         );
 

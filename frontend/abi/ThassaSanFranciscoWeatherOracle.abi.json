@@ -48,6 +48,19 @@
   },
   {
     "type": "function",
+    "name": "fulfilled",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "latestWeather",
     "inputs": [],
     "outputs": [

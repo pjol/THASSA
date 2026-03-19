@@ -15,6 +15,7 @@ abstract contract ThassaOracle is IThassaOracle {
     string private _query;
     string private _expectedShape;
     string private _model;
+    bool private _fulfilled;
     uint64 public immutable clientVersion;
 
     constructor(
@@ -47,6 +48,10 @@ abstract contract ThassaOracle is IThassaOracle {
         return _model;
     }
 
+    function fulfilled() external view override returns (bool) {
+        return _fulfilled;
+    }
+
     function oracleSpec() external view override returns (OracleSpec memory) {
         return OracleSpec({query: _query, expectedShape: _expectedShape, model: _model, clientVersion: clientVersion});
     }
@@ -66,6 +71,7 @@ abstract contract ThassaOracle is IThassaOracle {
         }
 
         _updateOracle(callbackData);
+        _fulfilled = true;
     }
 
     function _updateOracle(bytes calldata callbackData) internal virtual;

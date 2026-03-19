@@ -4,7 +4,8 @@ Quick local demo service that:
 - accepts `query` + output shape
 - calls ChatGPT in structured output mode
 - ABI-encodes callback data
-- computes/signs a `SignedUpdate` payload compatible with `ThassaHub`
+- computes/signs the current `UpdateEnvelope` digest and returns a signature-backed `ProofEnvelope`
+- automatically injects a reserved `_fulfilled: bool` field into the LLM schema and proof public values
 - scans chain every 2 seconds for `BidPlaced` and tries `submitAutoUpdate` automatically
 
 Security/payment hardening is intentionally minimal for demo speed.
@@ -37,9 +38,9 @@ On startup, the node runs a background worker (enabled by `AUTO_FULFILL_BIDS=tru
 2. scans `BidPlaced` logs from `DEFAULT_THASSA_HUB`
 3. loads oracle `query`, `expectedShape`, `model`, `clientVersion`
 4. generates structured output + ABI callback data
-5. signs update and sends `submitAutoUpdate(bidId, update)` onchain
+5. retries automatically until `_fulfilled=true` or the LLM timeout budget is exhausted, then sends `submitAutoUpdate(bidId, update, proof)` onchain
 6. auto-approves payment token allowance to hub when lockup allowance is too low
-7. guards against timestamp-only/stale outputs by retrying once with a freshness hint
+7. logs diffs against the previous shaped output for visibility, but still submits repeated values when `_fulfilled=true`
 
 Env knobs:
 - `THASSA_RPC_URL`
@@ -53,6 +54,9 @@ Env knobs:
 `AUTO_FULFILL_INPUT_DATA_JSON` is optional extra context only.
 Auto-fulfill no longer depends on env-supplied data shape/input and always reads
 `query`, `expectedShape`, `model`, and `clientVersion` directly from the oracle contract.
+
+Practical debugging note:
+- if `_fulfilled=false` keeps recurring, it is usually not a context-size issue in the demo weather flow. The node logs request context sizing and whether the backend rejected `web_search_options` and forced a retry without web search.
 
 Current limitation:
 - auto-fulfill shape parser currently supports flat primitive tuple shapes only,
@@ -103,6 +107,7 @@ Notes:
 - `openAIModel` is optional runtime model id for API calls. If omitted, server derives it from `model` by stripping `openai:`.
 - `expectedShape` should match `oracle.expectedShape()` exactly for hub validation.
 - `shape` (or `outputShape`) is the field/type list used by this server for structured output + ABI encoding.
+- `_fulfilled` is a reserved control field. Do not include it in `shape` or `expectedShape`; the node adds it automatically to the LLM schema and encodes it into `proofEnvelope.publicValues`.
 
 Optional hash overrides:
 - `queryHash`
@@ -120,7 +125,8 @@ Returns:
 - `structuredOutput`: LLM JSON object
 - `callbackData`: ABI-encoded bytes (hex)
 - `digest`: hub digest before EIP-191 prefixing
-- `signedUpdate`: contract submission payload fields + signature
+- `updateEnvelope`: current hub update payload
+- `proofEnvelope`: demo proof payload for `ThassaSignatureVerifier`
 - `oracleSpec`: full query/shape/model strings used for commitments
 
 ## Formatting Extension Point

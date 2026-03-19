@@ -20,13 +20,15 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/pjol/THASSA/node/internal/config"
 	"github.com/pjol/THASSA/node/internal/format"
+	"github.com/pjol/THASSA/node/internal/fulfillment"
 	"github.com/pjol/THASSA/node/internal/shape"
 	"github.com/pjol/THASSA/node/internal/signing"
 )
 
 const (
-	hubABIFile    = "ThassaHub.abi.json"
-	oracleABIFile = "ThassaOracle.abi.json"
+	hubABIFile           = "ThassaHub.abi.json"
+	oracleABIFile        = "ThassaOracle.abi.json"
+	proofSchemeSignature = 1
 )
 
 type OpenAIClient interface {
@@ -59,17 +61,23 @@ type Worker struct {
 	lastShapedOutputByClient map[common.Address]map[string]any
 }
 
-type hubSignedUpdate struct {
-	Client        common.Address
-	CallbackData  []byte
-	QueryHash     [32]byte
-	ShapeHash     [32]byte
-	ModelHash     [32]byte
-	ClientVersion uint64
-	Expiry        uint64
-	Nonce         *big.Int
-	Signer        common.Address
-	Signature     []byte
+type hubUpdateEnvelope struct {
+	Client           common.Address
+	CallbackData     []byte
+	QueryHash        [32]byte
+	ShapeHash        [32]byte
+	ModelHash        [32]byte
+	ClientVersion    uint64
+	RequestTimestamp uint64
+	Expiry           uint64
+	Nonce            *big.Int
+	Fulfiller        common.Address
+}
+
+type hubProofEnvelope struct {
+	Scheme       uint8
+	PublicValues []byte
+	Proof        []byte
 }
 
 type oracleSpec struct {
@@ -253,9 +261,14 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 	if err != nil {
 		return fmt.Errorf("parse expected shape %q: %w", spec.ExpectedShape, err)
 	}
+	if shape.HasField(outputShape, shape.FulfillmentFieldName) {
+		return fmt.Errorf("expected shape must not include reserved field %q; the node adds it automatically", shape.FulfillmentFieldName)
+	}
 	w.logStep(bidID, "SHAPE_OK", "parsed fields=%s", summarizeShape(outputShape))
 
-	schema, err := shape.BuildJSONSchema(outputShape)
+	llmShape := shape.WithFulfillmentField(outputShape)
+
+	schema, err := shape.BuildJSONSchema(llmShape)
 	if err != nil {
 		return fmt.Errorf("build schema: %w", err)
 	}
@@ -275,70 +288,42 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 	llmCtx, cancelLLM := context.WithTimeout(ctx, w.cfg.AutoFulfillLLMTimeout)
 	defer cancelLLM()
 
-	w.logStep(bidID, "LLM", "requesting structured output timeout=%s", w.cfg.AutoFulfillLLMTimeout)
-	shapedOutput, rawModelJSON, err := w.openai.GenerateStructuredOutput(
+	w.logStep(bidID, "LLM", "requesting structured output timeout=%s until _fulfilled=true", w.cfg.AutoFulfillLLMTimeout)
+	result, err := fulfillment.GenerateUntilFulfilled(
 		llmCtx,
+		w.openai,
 		openAIModel,
 		spec.Query,
 		inputData,
 		schema,
+		llmShape,
+		func(format string, args ...any) {
+			w.logStep(bidID, "LLM_ATTEMPT", format, args...)
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("generate structured output: %w", err)
 	}
-	w.logStep(bidID, "LLM_OK", "rawJson=%s", rawModelJSON)
 
-	if err := validateStructuredOutputAgainstShape(outputShape, shapedOutput); err != nil {
-		return fmt.Errorf("structured output shape validation failed: %w", err)
-	}
-	w.logStep(bidID, "LLM_FIELDS", "currentOutput=%s", formatOutputForLog(outputShape, shapedOutput))
+	shapedOutput := result.ShapedOutput
+	rawModelJSON := result.RawModelJSON
+	llmFulfilled := result.Fulfilled
+
+	w.logStep(bidID, "LLM_OK", "rawJson=%s", rawModelJSON)
+	w.logStep(bidID, "LLM_FIELDS", "currentOutput=%s", formatOutputForLog(llmShape, shapedOutput))
+	w.logStep(bidID, "LLM_STATUS", "_fulfilled=%t attempts=%d", llmFulfilled, result.Attempts)
 
 	prevShaped := w.lastShapedOutputByClient[clientAddress]
 	if prevShaped != nil {
-		w.logStep(bidID, "LLM_PREV", "previousOutput=%s", formatOutputForLog(outputShape, prevShaped))
-		w.logStep(bidID, "LLM_DIFF", "%s", summarizeFieldDelta(outputShape, prevShaped, shapedOutput))
-	}
-	if isStaleOutput(outputShape, prevShaped, shapedOutput) {
-		w.logStep(
-			bidID,
-			"STALE_RETRY",
-			"non-time fields unchanged from previous output for client=%s; retrying with freshness hint",
-			clientAddress.Hex(),
-		)
-
-		retryInput := cloneAnyMap(inputData)
-		retryInput["previousStructuredOutput"] = prevShaped
-		retryQuery := spec.Query + "\n\nFreshness requirement: provide a fresh observation and avoid returning an identical non-time field set to the previous report unless the source data itself is unchanged."
-
-		retryCtx, cancelRetry := context.WithTimeout(ctx, w.cfg.AutoFulfillLLMTimeout)
-		defer cancelRetry()
-
-		retriedOutput, retriedRawJSON, retryErr := w.openai.GenerateStructuredOutput(
-			retryCtx,
-			openAIModel,
-			retryQuery,
-			retryInput,
-			schema,
-		)
-		if retryErr != nil {
-			return fmt.Errorf("retry structured output after stale detection: %w", retryErr)
-		}
-		if err := validateStructuredOutputAgainstShape(outputShape, retriedOutput); err != nil {
-			return fmt.Errorf("retry structured output shape validation failed: %w", err)
-		}
-
-		shapedOutput = retriedOutput
-		rawModelJSON = retriedRawJSON
-		w.logStep(bidID, "LLM_RETRY_OK", "rawJson=%s", rawModelJSON)
-		w.logStep(bidID, "LLM_RETRY_FIELDS", "retryOutput=%s", formatOutputForLog(outputShape, shapedOutput))
-		w.logStep(bidID, "LLM_RETRY_DIFF", "%s", summarizeFieldDelta(outputShape, prevShaped, shapedOutput))
-
-		if isStaleOutput(outputShape, prevShaped, shapedOutput) {
-			return fmt.Errorf("stale output guard: non-time fields still unchanged after retry")
-		}
+		w.logStep(bidID, "LLM_PREV", "previousOutput=%s", formatOutputForLog(llmShape, prevShaped))
+		w.logStep(bidID, "LLM_DIFF", "%s", summarizeFieldDelta(llmShape, prevShaped, shapedOutput))
 	}
 
 	w.lastShapedOutputByClient[clientAddress] = cloneAnyMap(shapedOutput)
+
+	if !llmFulfilled {
+		return fmt.Errorf("structured output marked _fulfilled=false; refusing to submit defaulted result")
+	}
 
 	shapedOutputJSON, _ := json.Marshal(shapedOutput)
 	w.logStep(bidID, "SHAPE_MATCH", "output matches expected fields=%s", string(shapedOutputJSON))
@@ -361,15 +346,17 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 	shapeHash := crypto.Keccak256Hash([]byte(spec.ExpectedShape))
 	modelHash := crypto.Keccak256Hash([]byte(spec.Model))
 
-	expiry := uint64(time.Now().Unix()) + w.cfg.DefaultTTLSeconds
+	requestTimestamp := uint64(time.Now().Unix())
+	expiry := requestTimestamp + w.cfg.DefaultTTLSeconds
 	nonce := uint64(time.Now().UnixNano())
 	w.logStep(
 		bidID,
 		"HASHES",
-		"queryHash=%s shapeHash=%s modelHash=%s expiry=%d nonce=%d",
+		"queryHash=%s shapeHash=%s modelHash=%s requestTimestamp=%d expiry=%d nonce=%d",
 		queryHash.Hex(),
 		shapeHash.Hex(),
 		modelHash.Hex(),
+		requestTimestamp,
 		expiry,
 		nonce,
 	)
@@ -380,15 +367,16 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 		BidID:      bidID,
 		AutoFlow:   true,
 		Payload: signing.UpdatePayload{
-			Client:        clientAddress,
-			CallbackData:  callbackData,
-			QueryHash:     queryHash,
-			ShapeHash:     shapeHash,
-			ModelHash:     modelHash,
-			ClientVersion: spec.ClientVersion,
-			Expiry:        expiry,
-			Nonce:         new(big.Int).SetUint64(nonce),
-			Signer:        w.signer.Address(),
+			Client:           clientAddress,
+			CallbackData:     callbackData,
+			QueryHash:        queryHash,
+			ShapeHash:        shapeHash,
+			ModelHash:        modelHash,
+			ClientVersion:    spec.ClientVersion,
+			RequestTimestamp: requestTimestamp,
+			Expiry:           expiry,
+			Nonce:            new(big.Int).SetUint64(nonce),
+			Fulfiller:        w.signer.Address(),
 		},
 	})
 	if err != nil {
@@ -396,17 +384,27 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 	}
 	w.logStep(bidID, "SIGN", "localDigest=%s signer=%s", signResult.Digest.Hex(), w.signer.Address().Hex())
 
-	update := hubSignedUpdate{
-		Client:        clientAddress,
-		CallbackData:  callbackData,
-		QueryHash:     queryHash,
-		ShapeHash:     shapeHash,
-		ModelHash:     modelHash,
-		ClientVersion: spec.ClientVersion,
-		Expiry:        expiry,
-		Nonce:         new(big.Int).SetUint64(nonce),
-		Signer:        w.signer.Address(),
-		Signature:     signResult.Signature,
+	update := hubUpdateEnvelope{
+		Client:           clientAddress,
+		CallbackData:     callbackData,
+		QueryHash:        queryHash,
+		ShapeHash:        shapeHash,
+		ModelHash:        modelHash,
+		ClientVersion:    spec.ClientVersion,
+		RequestTimestamp: requestTimestamp,
+		Expiry:           expiry,
+		Nonce:            new(big.Int).SetUint64(nonce),
+		Fulfiller:        w.signer.Address(),
+	}
+
+	publicValues, err := format.EncodeFulfillmentPublicValues(llmFulfilled)
+	if err != nil {
+		return fmt.Errorf("encode proof public values: %w", err)
+	}
+	proof := hubProofEnvelope{
+		Scheme:       proofSchemeSignature,
+		PublicValues: publicValues,
+		Proof:        signResult.Signature,
 	}
 
 	hubDigest, err := w.computeHubDigest(ctx, bidID, update)
@@ -418,7 +416,7 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 	}
 	w.logStep(bidID, "DIGEST_OK", "hub digest matches local digest=%s", hubDigest.Hex())
 
-	isProofValid, verifierModule, err := w.verifyWithVerifierModule(ctx, hubDigest, update)
+	isProofValid, verifierModule, err := w.verifyWithVerifierModule(ctx, hubDigest, bidID, update, proof)
 	if err != nil {
 		return fmt.Errorf("verifier module preflight failed: %w", err)
 	}
@@ -433,7 +431,7 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 	}
 
 	w.logStep(bidID, "TX", "submitting submitAutoUpdate transaction")
-	tx, err := w.submitAutoUpdateTx(ctx, bidID, update)
+	tx, err := w.submitAutoUpdateTx(ctx, bidID, update, proof)
 	if err != nil {
 		return fmt.Errorf("submitAutoUpdate tx: %w", err)
 	}
@@ -460,14 +458,19 @@ func (w *Worker) tryFulfillBid(ctx context.Context, bidID *big.Int, clientAddres
 	return nil
 }
 
-func (w *Worker) submitAutoUpdateTx(ctx context.Context, bidID *big.Int, update hubSignedUpdate) (*types.Transaction, error) {
+func (w *Worker) submitAutoUpdateTx(
+	ctx context.Context,
+	bidID *big.Int,
+	update hubUpdateEnvelope,
+	proof hubProofEnvelope,
+) (*types.Transaction, error) {
 	auth, err := bind.NewKeyedTransactorWithChainID(w.signer.PrivateKey(), w.chainID)
 	if err != nil {
 		return nil, err
 	}
 	auth.Context = ctx
 
-	tx, err := w.hubContract.Transact(auth, "submitAutoUpdate", bidID, update)
+	tx, err := w.hubContract.Transact(auth, "submitAutoUpdate", bidID, update, proof)
 	if err != nil {
 		return nil, err
 	}
@@ -740,7 +743,7 @@ func decodeBidPlaced(eventLog types.Log) (*big.Int, common.Address, error) {
 	return bidID, client, nil
 }
 
-func (w *Worker) computeHubDigest(ctx context.Context, bidID *big.Int, update hubSignedUpdate) (common.Hash, error) {
+func (w *Worker) computeHubDigest(ctx context.Context, bidID *big.Int, update hubUpdateEnvelope) (common.Hash, error) {
 	var out []any
 	if err := w.hubContract.Call(
 		&bind.CallOpts{Context: ctx},
@@ -769,7 +772,9 @@ func (w *Worker) computeHubDigest(ctx context.Context, bidID *big.Int, update hu
 func (w *Worker) verifyWithVerifierModule(
 	ctx context.Context,
 	digest common.Hash,
-	update hubSignedUpdate,
+	bidID *big.Int,
+	update hubUpdateEnvelope,
+	proof hubProofEnvelope,
 ) (bool, common.Address, error) {
 	verifierModule, err := w.readHubAddress(ctx, "verifierModule")
 	if err != nil {
@@ -788,7 +793,10 @@ func (w *Worker) verifyWithVerifierModule(
 		&out,
 		"verifyUpdate",
 		digest,
+		bidID,
+		true,
 		update,
+		proof,
 	); err != nil {
 		return false, verifierModule, err
 	}
@@ -821,20 +829,6 @@ func (w *Worker) buildAutoFulfillInputData(bidID *big.Int, client common.Address
 	}
 
 	return result
-}
-
-func validateStructuredOutputAgainstShape(fields []shape.FieldSpec, shaped map[string]any) error {
-	if len(shaped) != len(fields) {
-		return fmt.Errorf("field count mismatch: expected %d got %d", len(fields), len(shaped))
-	}
-
-	for _, field := range fields {
-		if _, ok := shaped[field.Name]; !ok {
-			return fmt.Errorf("missing field %q", field.Name)
-		}
-	}
-
-	return nil
 }
 
 func summarizeShape(fields []shape.FieldSpec) string {
@@ -914,32 +908,6 @@ func summarizeFieldDelta(fields []shape.FieldSpec, previous map[string]any, curr
 		len(missing),
 		strings.Join(missing, ", "),
 	)
-}
-
-func isStaleOutput(fields []shape.FieldSpec, previous map[string]any, current map[string]any) bool {
-	if previous == nil || current == nil {
-		return false
-	}
-
-	comparedFields := 0
-	for _, field := range fields {
-		if isTimeLikeField(field.Name) {
-			continue
-		}
-
-		prevValue, prevOK := previous[field.Name]
-		currValue, currOK := current[field.Name]
-		if !prevOK || !currOK {
-			return false
-		}
-
-		comparedFields++
-		if !jsonValuesEqual(prevValue, currValue) {
-			return false
-		}
-	}
-
-	return comparedFields > 0
 }
 
 func isTimeLikeField(name string) bool {
@@ -1051,10 +1019,12 @@ const verifierABIJSON = `[
     "name":"verifyUpdate",
     "inputs":[
       {"name":"digest","type":"bytes32","internalType":"bytes32"},
+      {"name":"bidId","type":"uint256","internalType":"uint256"},
+      {"name":"autoFlow","type":"bool","internalType":"bool"},
       {
         "name":"update",
         "type":"tuple",
-        "internalType":"struct IThassaHub.SignedUpdate",
+        "internalType":"struct IThassaHub.UpdateEnvelope",
         "components":[
           {"name":"client","type":"address","internalType":"address"},
           {"name":"callbackData","type":"bytes","internalType":"bytes"},
@@ -1062,10 +1032,20 @@ const verifierABIJSON = `[
           {"name":"shapeHash","type":"bytes32","internalType":"bytes32"},
           {"name":"modelHash","type":"bytes32","internalType":"bytes32"},
           {"name":"clientVersion","type":"uint64","internalType":"uint64"},
+          {"name":"requestTimestamp","type":"uint64","internalType":"uint64"},
           {"name":"expiry","type":"uint64","internalType":"uint64"},
           {"name":"nonce","type":"uint256","internalType":"uint256"},
-          {"name":"signer","type":"address","internalType":"address"},
-          {"name":"signature","type":"bytes","internalType":"bytes"}
+          {"name":"fulfiller","type":"address","internalType":"address"}
+        ]
+      },
+      {
+        "name":"proof",
+        "type":"tuple",
+        "internalType":"struct IThassaHub.ProofEnvelope",
+        "components":[
+          {"name":"scheme","type":"uint8","internalType":"uint8"},
+          {"name":"publicValues","type":"bytes","internalType":"bytes"},
+          {"name":"proof","type":"bytes","internalType":"bytes"}
         ]
       }
     ],

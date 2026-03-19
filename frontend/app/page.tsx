@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createPublicClient,
@@ -37,6 +38,7 @@ type WeatherReport = {
 
 type Snapshot = {
   weather: WeatherReport;
+  fulfilled: boolean;
   query: string;
   expectedShape: string;
   model: string;
@@ -62,8 +64,13 @@ function asPrivateKey(value: string | undefined): `0x${string}` | null {
   return withPrefix as `0x${string}`;
 }
 
-function formatWeatherValue(weather: WeatherReport | null) {
-  if (!weather) return null;
+function shortAddress(value: string | undefined, width = 6) {
+  if (!value) return "--";
+  return `${value.slice(0, width + 2)}…${value.slice(-4)}`;
+}
+
+function formatWeatherValue(weather: WeatherReport | null, fulfilled: boolean) {
+  if (!weather || !fulfilled) return null;
 
   const toNumber = (value: Numeric) => (typeof value === "bigint" ? Number(value) : value);
   const observationSeconds = toNumber(weather.observationTimestamp);
@@ -124,7 +131,7 @@ export default function HomePage() {
   }, [account, rpcUrl]);
 
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [bidAmountInput, setBidAmountInput] = useState("");
   const [logs, setLogs] = useState<LogItem[]>([]);
@@ -142,10 +149,14 @@ export default function HomePage() {
     });
   }, []);
 
-  const readSnapshot = useCallback(async () => {
+  const readSnapshot = useCallback(async (options?: { interactive?: boolean }) => {
     if (!publicClient || !oracleAddress || !hubAddress || !account) return;
 
-    setLoading(true);
+    const interactive = options?.interactive ?? false;
+    if (interactive) {
+      setSyncing(true);
+    }
+
     try {
       const [oracleBytecode, hubBytecode] = await Promise.all([
         publicClient.getBytecode({ address: oracleAddress }),
@@ -163,7 +174,7 @@ export default function HomePage() {
         );
       }
 
-      const [oracleHub, query, expectedShape, model, baseProtocolFee, paymentToken] =
+      const [oracleHub, query, expectedShape, model, fulfilled, baseProtocolFee, paymentToken] =
         await Promise.all([
           publicClient.readContract({
             address: oracleAddress,
@@ -184,6 +195,11 @@ export default function HomePage() {
             address: oracleAddress,
             abi: weatherOracleAbi,
             functionName: "model"
+          }),
+          publicClient.readContract({
+            address: oracleAddress,
+            abi: weatherOracleAbi,
+            functionName: "fulfilled"
           }),
           publicClient.readContract({
             address: hubAddress,
@@ -241,6 +257,7 @@ export default function HomePage() {
 
       setSnapshot({
         weather: latestWeatherRaw as WeatherReport,
+        fulfilled: fulfilled as boolean,
         query: query as string,
         expectedShape: expectedShape as string,
         model: model as string,
@@ -260,7 +277,9 @@ export default function HomePage() {
         "error"
       );
     } finally {
-      setLoading(false);
+      if (interactive) {
+        setSyncing(false);
+      }
     }
   }, [account, hubAddress, oracleAddress, publicClient, pushLog]);
 
@@ -394,14 +413,14 @@ export default function HomePage() {
     }
   }, [account, bidAmountInput, oracleAddress, publicClient, pushLog, readSnapshot, snapshot, walletClient]);
 
-  const weather = formatWeatherValue(snapshot?.weather ?? null);
+  const weather = formatWeatherValue(snapshot?.weather ?? null, snapshot?.fulfilled ?? false);
 
   if (envErrors.length > 0) {
     return (
       <main className="page">
         <section className="configErrorCard reveal">
-          <h1>THASSA Demo Frontend</h1>
-          <p>Set your frontend env first:</p>
+          <h1>THASSA Demo</h1>
+          <p>Set the frontend env.</p>
           <ul>
             {envErrors.map((error) => (
               <li key={error}>{error}</li>
@@ -417,34 +436,64 @@ export default function HomePage() {
     <main className="page">
       <div className="ambient ambientA" />
       <div className="ambient ambientB" />
+      <div className="ambient ambientC" />
 
       <section className="hero reveal">
-        <p className="heroTag">THASSA PROTOCOL DEMO</p>
-        <h1>San Francisco Weather Oracle</h1>
-        <p>
-          Read the latest weather report from chain and request a fresh auto-update bid in one click.
-        </p>
-        <div className="heroMeta">
-          <span className="chip">Live RPC</span>
-          <span className="chip">Demo Signer: {account?.address}</span>
+        <div className="brandRow">
+          <div className="brandLockup">
+            <div className="logoShell">
+              <Image src="/thassa-logo.svg" alt="THASSA logo" width={78} height={78} className="brandLogo" priority />
+            </div>
+            <div>
+              <p className="heroTag">THASSA DEMO</p>
+              <h1>Weather Oracle</h1>
+              <p className="heroLead">Reading from our onchain weather report.</p>
+            </div>
+          </div>
+
+          <div className="heroMeta">
+            <span className="chip">RPC Live</span>
+            <span className="chip">Signer {shortAddress(account?.address)}</span>
+            <span className="chip">Hub {shortAddress(hubAddress ?? undefined, 4)}</span>
+          </div>
+        </div>
+
+        <div className="heroStatus">
+          <span className={`chip ${snapshot?.fulfilled ? "chipOk" : "chipPending"}`}>
+            {snapshot?.fulfilled ? "Report Live" : "Awaiting First Fill"}
+          </span>
+          <p>{snapshot?.fulfilled ? "Onchain weather is populated." : "No onchain weather yet."}</p>
         </div>
       </section>
 
       <section className="grid">
         <article className="card weatherCard reveal">
           <div className="cardHeader">
-            <h2>Current Onchain Report</h2>
-            <button className="ghostButton" onClick={() => void readSnapshot()} disabled={loading || requesting}>
-              {loading ? "Refreshing..." : "Refresh"}
+            <div>
+              <p className="eyebrow">Snapshot</p>
+              <h2>Live Report</h2>
+            </div>
+            <button className="ghostButton" onClick={() => void readSnapshot({ interactive: true })} disabled={syncing || requesting}>
+              {syncing ? "Syncing..." : "Sync"}
             </button>
           </div>
 
-          <p className="statusLine">
-            {weather?.observationDate ?? "No report loaded"} · condition{" "}
-            <span className="mono">{weather?.description ?? "n/a"}</span>
-          </p>
+          <div className="statusRow">
+            <span className={`statusBadge ${snapshot?.fulfilled ? "statusOk" : "statusPending"}`}>
+              {snapshot?.fulfilled ? "Fulfilled" : "Pending"}
+            </span>
+            <p className="statusLine">
+              {snapshot?.fulfilled
+                ? `${weather?.observationDate ?? "No report"} · ${weather?.description ?? "n/a"}`
+                : "No report yet."}
+            </p>
+          </div>
 
           <div className="weatherGrid">
+            <div className="metric">
+              <span>Status</span>
+              <strong>{snapshot?.fulfilled ? "Yes" : "No"}</strong>
+            </div>
             <div className="metric">
               <span>Temperature</span>
               <strong>{weather ? `${weather.temperatureC.toFixed(1)}°C` : "--"}</strong>
@@ -470,24 +519,25 @@ export default function HomePage() {
               <strong>{weather ? `${weather.pressureHpa.toFixed(1)} hPa` : "--"}</strong>
             </div>
             <div className="metric">
-              <span>Condition Code</span>
+              <span>Code</span>
               <strong>{weather ? weather.code : "--"}</strong>
             </div>
             <div className="metric">
-              <span>Last Timestamp</span>
-              <strong>{snapshot ? snapshot.weather.observationTimestamp.toString() : "--"}</strong>
+              <span>Unix Time</span>
+              <strong>
+                {snapshot?.fulfilled ? snapshot.weather.observationTimestamp.toString() : "--"}
+              </strong>
             </div>
           </div>
         </article>
 
         <article className="card actionCard reveal">
-          <h2>Request Auto-Update</h2>
-          <p>
-            This submits <span className="mono">oracle.placeBid(bidAmount)</span> from the demo private key.
-          </p>
+          <p className="eyebrow">Action</p>
+          <h2>Queue Update</h2>
+          <p>Calls <span className="mono">oracle.placeBid(...)</span> from the demo key.</p>
 
           <label>
-            Bid Amount ({snapshot?.tokenSymbol ?? "TOKEN"})
+            Bid ({snapshot?.tokenSymbol ?? "TOKEN"})
             <input
               value={bidAmountInput}
               onChange={(event) => setBidAmountInput(event.target.value)}
@@ -513,23 +563,40 @@ export default function HomePage() {
             </div>
           </div>
 
-          <button className="primaryButton" onClick={() => void requestAutoUpdate()} disabled={requesting || loading}>
-            {requesting ? "Submitting..." : "Request Contract Auto-Update"}
+          <button className="primaryButton" onClick={() => void requestAutoUpdate()} disabled={requesting}>
+            {requesting ? "Submitting..." : "Queue Auto-Update"}
           </button>
         </article>
 
         <article className="card bindingsCard reveal">
-          <h2>Oracle Bindings</h2>
-          <p className="mono compact">{snapshot?.model ?? "--"}</p>
-          <p className="mono compact">{snapshot?.query ?? "--"}</p>
-          <p className="mono compact">{snapshot?.expectedShape ?? "--"}</p>
+          <p className="eyebrow">Spec</p>
+          <h2>Oracle Config</h2>
+          <div className="specStack">
+            <div className="specBlock">
+              <span className="specLabel">Model</span>
+              <p className="mono compact">{snapshot?.model ?? "--"}</p>
+            </div>
+            <div className="specBlock">
+              <span className="specLabel">Query</span>
+              <p className="mono compact">{snapshot?.query ?? "--"}</p>
+            </div>
+            <div className="specBlock">
+              <span className="specLabel">Shape</span>
+              <p className="mono compact">{snapshot?.expectedShape ?? "--"}</p>
+            </div>
+          </div>
         </article>
 
         <article className="card logCard reveal">
-          <h2>Activity</h2>
+          <div className="cardHeader">
+            <div>
+              <p className="eyebrow">Trace</p>
+              <h2>Activity</h2>
+            </div>
+          </div>
           <div className="logViewport">
             {logs.length === 0 ? (
-              <p className="statusLine">No actions yet.</p>
+              <p className="statusLine">No events yet.</p>
             ) : (
               <ul className="logList">
                 {logs.map((item) => (

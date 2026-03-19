@@ -18,7 +18,7 @@ set +a
 
 : "${DEPLOY_RPC_URL:?DEPLOY_RPC_URL is required in contracts/.env}"
 : "${DEPLOYER_PRIVATE_KEY:?DEPLOYER_PRIVATE_KEY is required in contracts/.env}"
-: "${VERIFIER_PUBLIC_KEY:?VERIFIER_PUBLIC_KEY is required in contracts/.env}"
+: "${NODE_SIGNER_PUBLIC_KEY:?NODE_SIGNER_PUBLIC_KEY is required in contracts/.env}"
 : "${USER_ACCOUNT_PUBLIC_KEY:?USER_ACCOUNT_PUBLIC_KEY is required in contracts/.env}"
 
 forge script script/DeployThassa.s.sol:DeployThassaScript \

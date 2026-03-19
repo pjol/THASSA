@@ -2,17 +2,40 @@
 pragma solidity ^0.8.24;
 
 interface IThassaHub {
-    struct SignedUpdate {
+    struct UpdateEnvelope {
         address client;
         bytes callbackData;
         bytes32 queryHash;
         bytes32 shapeHash;
         bytes32 modelHash;
         uint64 clientVersion;
+        uint64 requestTimestamp;
         uint64 expiry;
         uint256 nonce;
-        address signer;
-        bytes signature;
+        address fulfiller;
+    }
+
+    struct ProofEnvelope {
+        uint8 scheme;
+        bytes publicValues;
+        bytes proof;
+    }
+
+    struct ProofCommitment {
+        bool llmFulfilled;
+        bytes32 digest;
+        uint256 bidId;
+        bool autoFlow;
+        address client;
+        address fulfiller;
+        bytes32 queryHash;
+        bytes32 shapeHash;
+        bytes32 modelHash;
+        uint64 clientVersion;
+        uint64 requestTimestamp;
+        uint64 expiry;
+        uint256 nonce;
+        bytes32 callbackHash;
     }
 
     struct Bid {
@@ -28,7 +51,12 @@ interface IThassaHub {
     error BidNotOpen(uint256 bidId);
     error NotBidRequester(uint256 bidId, address caller);
     error BidClientMismatch(address expectedClient, address providedClient);
-    error SignatureExpired(uint64 expiry, uint64 currentTimestamp);
+    error AutoFlowFulfillerMismatch(address expectedFulfiller, address caller);
+    error UpdateTimestampInFuture(uint64 requestTimestamp, uint64 currentTimestamp);
+    error UpdateExpired(uint64 expiry, uint64 currentTimestamp);
+    error ClientAlreadyFulfilled(address client);
+    error InvalidFulfillmentMarker();
+    error UnfulfilledResult(address client);
     error Replay(bytes32 digest);
     error SpecMismatch(address client);
     error InvalidProof(address verifierModule);
@@ -38,13 +66,18 @@ interface IThassaHub {
     event BidPlaced(uint256 indexed bidId, address indexed requester, address indexed client, uint256 amount);
     event BidCancelled(uint256 indexed bidId, address indexed requester, uint256 amount);
     event ManualUpdateSubmitted(
-        address indexed submitter, address indexed client, address indexed signer, bytes32 digest, bool callbackSuccess
+        address indexed submitter,
+        address indexed client,
+        address indexed fulfiller,
+        bytes32 digest,
+        bool callbackSuccess
     );
     event AutoUpdateSubmitted(
         uint256 indexed bidId,
         address indexed requester,
-        address indexed node,
+        address indexed submitter,
         address client,
+        address fulfiller,
         bytes32 digest,
         bool callbackSuccess,
         uint256 protocolFee,
@@ -66,10 +99,10 @@ interface IThassaHub {
     function placeBid(address client, uint256 bidAmount) external returns (uint256 bidId);
     function cancelBid(uint256 bidId) external;
 
-    function submitManualUpdate(SignedUpdate calldata update) external;
-    function submitAutoUpdate(uint256 bidId, SignedUpdate calldata update) external;
+    function submitManualUpdate(UpdateEnvelope calldata update, ProofEnvelope calldata proof) external;
+    function submitAutoUpdate(uint256 bidId, UpdateEnvelope calldata update, ProofEnvelope calldata proof) external;
 
-    function computeUpdateDigest(SignedUpdate calldata update, uint256 bidId, bool autoFlow)
+    function computeUpdateDigest(UpdateEnvelope calldata update, uint256 bidId, bool autoFlow)
         external
         view
         returns (bytes32);

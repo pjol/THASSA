@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	openaigo "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
-	openaishared "github.com/openai/openai-go/shared"
+	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/responses"
+	"github.com/openai/openai-go/shared"
 )
 
 type Client struct {
@@ -48,7 +51,7 @@ func (c *Client) GenerateStructuredOutput(
 	inputData map[string]any,
 	schema map[string]any,
 ) (map[string]any, string, error) {
-	systemPrompt := "You are an oracle data shaping engine. Search the web for answers when needed and return strict JSON only."
+	instructions := buildInstructions()
 
 	inputDataJSON, err := json.Marshal(inputData)
 	if err != nil {
@@ -59,7 +62,7 @@ func (c *Client) GenerateStructuredOutput(
 		return nil, "", fmt.Errorf("marshal schema: %w", err)
 	}
 
-	contextChars := len(systemPrompt) + len(query) + len(inputDataJSON) + len(schemaJSON)
+	contextChars := len(instructions) + len(query) + len(inputDataJSON) + len(schemaJSON)
 	if contextChars > c.maxContextChars {
 		return nil, "", fmt.Errorf(
 			"request context too large: %d chars exceeds OPENAI_MAX_CONTEXT_CHARS=%d (query=%d inputData=%d schema=%d)",
@@ -71,9 +74,26 @@ func (c *Client) GenerateStructuredOutput(
 		)
 	}
 
+	log.Printf(
+		"[OPENAI] model=%s contextChars=%d maxContextChars=%d queryChars=%d inputDataChars=%d schemaChars=%d webSearchRequested=true webSearchRequired=true reasoningEffort=medium",
+		model,
+		contextChars,
+		c.maxContextChars,
+		len(query),
+		len(inputDataJSON),
+		len(schemaJSON),
+	)
+
 	userPrompt := strings.TrimSpace(fmt.Sprintf(
 		`Query:
 %s
+
+Execution-status rule:
+- Always include "_fulfilled" in the JSON response.
+- Set "_fulfilled" to true only when the request was actually executed successfully and the remaining fields come from the real result.
+- Set "_fulfilled" to false if execution failed, live data could not be obtained, or you had to use default/placeholder/fabricated/empty fallback values.
+- Legitimate zero values are allowed when they are the actual observed value or the correct schema encoding of the observed result.
+- If "_fulfilled" is false, still return a syntactically valid JSON object for the full schema.
 
 Input data (JSON):
 %s
@@ -83,38 +103,63 @@ Return only a JSON object that strictly matches the provided schema.`,
 		string(inputDataJSON),
 	))
 
-	schemaParam := openaishared.ResponseFormatJSONSchemaJSONSchemaParam{
-		Name:   "thassa_output",
-		Strict: openaigo.Bool(true),
-		Schema: schema,
+	searchTool := responses.WebSearchToolParam{
+		Type:              responses.WebSearchToolTypeWebSearchPreview2025_03_11,
+		SearchContextSize: responses.WebSearchToolSearchContextSizeHigh,
 	}
 
-	request := openaigo.ChatCompletionNewParams{
-		Model: model,
-		Messages: []openaigo.ChatCompletionMessageParamUnion{
-			openaigo.SystemMessage(systemPrompt),
-			openaigo.UserMessage(userPrompt),
-		},
-		ResponseFormat: openaigo.ChatCompletionNewParamsResponseFormatUnion{
-			OfJSONSchema: &openaishared.ResponseFormatJSONSchemaParam{
-				JSONSchema: schemaParam,
+	request := responses.ResponseNewParams{
+		Model:        model,
+		Store:        param.NewOpt(false),
+		Instructions: param.NewOpt(instructions),
+		Input: responses.ResponseNewParamsInputUnion{
+			OfInputItemList: responses.ResponseInputParam{
+				responses.ResponseInputItemParamOfMessage(userPrompt, responses.EasyInputMessageRoleUser),
 			},
 		},
-		WebSearchOptions: openaigo.ChatCompletionNewParamsWebSearchOptions{
-			SearchContextSize: "medium",
+		Reasoning: shared.ReasoningParam{
+			Effort: shared.ReasoningEffortMedium,
+		},
+		MaxToolCalls:      param.NewOpt(int64(8)),
+		ParallelToolCalls: param.NewOpt(false),
+		Text: responses.ResponseTextConfigParam{
+			Format: responses.ResponseFormatTextConfigUnionParam{
+				OfJSONSchema: &responses.ResponseFormatTextJSONSchemaConfigParam{
+					Name:   "thassa_output",
+					Schema: schema,
+					Strict: param.NewOpt(true),
+				},
+			},
+		},
+		Tools: []responses.ToolUnionParam{
+			{
+				OfWebSearchPreview: &searchTool,
+			},
+		},
+		ToolChoice: responses.ResponseNewParamsToolChoiceUnion{
+			OfToolChoiceMode: param.NewOpt(responses.ToolChoiceOptionsRequired),
 		},
 	}
 
-	completion, err := c.client.Chat.Completions.New(ctx, request)
-	if err != nil {
-		var apiErr *openaigo.Error
-		if errors.As(err, &apiErr) && isUnknownWebSearchOptionsError(apiErr) {
-			// Fallback for backends that do not yet accept `web_search_options`.
-			request.WebSearchOptions = openaigo.ChatCompletionNewParamsWebSearchOptions{}
-			completion, err = c.client.Chat.Completions.New(ctx, request)
-		}
+	requestOptions := []option.RequestOption{
+		// The live API accepts the newer GA `web_search` tool type even though this SDK
+		// still models preview variants. Use JSON override so the demo path tracks the
+		// current tool behavior more closely.
+		option.WithJSONSet("tools.0.type", "web_search"),
 	}
 
+	response, err := c.client.Responses.New(ctx, request, requestOptions...)
+	if err != nil {
+		var apiErr *openaigo.Error
+		if errors.As(err, &apiErr) && isUnsupportedWebSearchTypeError(apiErr) {
+			log.Printf(
+				"[OPENAI] model=%s backend rejected GA web_search tool type; retrying with preview tool type %q",
+				model,
+				searchTool.Type,
+			)
+			response, err = c.client.Responses.New(ctx, request)
+		}
+	}
 	if err != nil {
 		var apiErr *openaigo.Error
 		if errors.As(err, &apiErr) {
@@ -131,13 +176,27 @@ Return only a JSON object that strictly matches the provided schema.`,
 		return nil, "", fmt.Errorf("call openai: %w", err)
 	}
 
-	if len(completion.Choices) == 0 {
-		return nil, "", fmt.Errorf("openai returned no choices")
+	if response == nil {
+		return nil, "", fmt.Errorf("openai returned nil response")
 	}
 
-	raw := strings.TrimSpace(stripCodeFence(completion.Choices[0].Message.Content))
+	if response.Error.Message != "" {
+		return nil, "", fmt.Errorf("openai response error: %s", response.Error.Message)
+	}
+
+	if response.Status == responses.ResponseStatusIncomplete {
+		reason := strings.TrimSpace(response.IncompleteDetails.Reason)
+		if reason == "" {
+			reason = "unknown"
+		}
+		return nil, "", fmt.Errorf("openai response incomplete: %s", reason)
+	}
+
+	log.Printf("[OPENAI] model=%s responseStatus=%s tools=%s", model, response.Status, summarizeResponseItems(response))
+
+	raw := strings.TrimSpace(stripCodeFence(response.OutputText()))
 	if raw == "" {
-		refusal := strings.TrimSpace(completion.Choices[0].Message.Refusal)
+		refusal := strings.TrimSpace(extractResponseRefusal(response))
 		if refusal != "" {
 			return nil, "", fmt.Errorf("openai refusal: %s", refusal)
 		}
@@ -155,17 +214,14 @@ Return only a JSON object that strictly matches the provided schema.`,
 	return shaped, raw, nil
 }
 
-func isUnknownWebSearchOptionsError(apiErr *openaigo.Error) bool {
-	if apiErr == nil {
-		return false
-	}
-
-	if apiErr.Param == "web_search_options" && apiErr.Code == "unknown_parameter" {
-		return true
-	}
-
-	raw := strings.ToLower(apiErr.RawJSON())
-	return strings.Contains(raw, "unknown parameter") && strings.Contains(raw, "web_search_options")
+func buildInstructions() string {
+	return "You are an oracle data shaping engine. Use web search for live-data requests and return strict JSON only. " +
+		"Every response must include a boolean field named `_fulfilled`. Set `_fulfilled` to true only if you successfully executed " +
+		"the request using real source data and populated the remaining fields from that result. Set `_fulfilled` to false if you " +
+		"could not execute the request, could not obtain the requested live data, or had to rely on default, placeholder, fabricated, or empty fallback values. " +
+		"Legitimate zero values are allowed when they are the actual observed value or the correct schema encoding of the observed result; zero by itself does not imply fallback. " +
+		"Do not stop at a generic search summary if it lacks required fields; continue searching and open source pages when needed. " +
+		"Do not invent missing fields. If any required numeric field would be guessed, inferred, or defaulted, `_fulfilled` must be false."
 }
 
 func stripCodeFence(raw string) string {
@@ -178,4 +234,71 @@ func stripCodeFence(raw string) string {
 	raw = strings.TrimPrefix(raw, "```")
 	raw = strings.TrimSuffix(raw, "```")
 	return strings.TrimSpace(raw)
+}
+
+func extractResponseRefusal(response *responses.Response) string {
+	if response == nil {
+		return ""
+	}
+
+	for _, item := range response.Output {
+		for _, content := range item.Content {
+			if content.Type == "refusal" {
+				return content.Refusal
+			}
+		}
+	}
+
+	return ""
+}
+
+func isUnsupportedWebSearchTypeError(apiErr *openaigo.Error) bool {
+	if apiErr == nil {
+		return false
+	}
+
+	raw := strings.ToLower(strings.TrimSpace(apiErr.RawJSON()))
+	if raw == "" {
+		raw = strings.ToLower(strings.TrimSpace(apiErr.Message))
+	}
+
+	if !strings.Contains(raw, "web_search") {
+		return false
+	}
+
+	return strings.Contains(raw, "invalid value") ||
+		strings.Contains(raw, "unsupported") ||
+		strings.Contains(raw, "unknown") ||
+		strings.Contains(raw, "invalid enum")
+}
+
+func summarizeResponseItems(response *responses.Response) string {
+	if response == nil || len(response.Output) == 0 {
+		return "none"
+	}
+
+	parts := make([]string, 0, len(response.Output))
+	for _, item := range response.Output {
+		summary := item.Type
+		if item.Status != "" {
+			summary += ":" + item.Status
+		}
+		if item.Type == "web_search_call" {
+			actionType := strings.TrimSpace(string(item.Action.Type))
+			if actionType != "" {
+				summary += ":" + actionType
+			}
+			query := strings.TrimSpace(item.Action.Query)
+			if query != "" {
+				summary += ":" + query
+			}
+			url := strings.TrimSpace(item.Action.URL)
+			if url != "" {
+				summary += ":" + url
+			}
+		}
+		parts = append(parts, summary)
+	}
+
+	return strings.Join(parts, " | ")
 }

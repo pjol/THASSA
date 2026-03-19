@@ -5,8 +5,14 @@ import {ThassaOracle} from "./ThassaOracle.sol";
 import {IThassaSanFranciscoWeatherOracle} from "../interfaces/IThassaSanFranciscoWeatherOracle.sol";
 
 contract ThassaSanFranciscoWeatherOracle is ThassaOracle, IThassaSanFranciscoWeatherOracle {
-    string private constant WEATHER_QUERY = "Provide current real-time weather conditions for San Francisco, California, United States, "
-        "using latest available observations. Return only the requested schema fields.";
+    string private constant WEATHER_QUERY =
+        "Provide the current observed weather conditions for San Francisco, California, United States. "
+        "Use live web search and only the most recent real observation data from an authoritative direct observation source or station report. "
+        "Do not use forecasts, projected values, climatological normals, inferred estimates, or generic search-summary weather cards unless they explicitly expose all required observed fields. "
+        "If the first search result is only a summary card or lacks the full observed field set, continue searching for a direct observation page or station report from an authoritative weather source. "
+        "If multiple sources are available, prefer the newest direct observation and use that observation time for observationTimestamp. "
+        "Set conditionCode to the WMO weather code for the observed condition, not a provider-specific icon code. "
+        "Return only the requested schema fields.";
 
     string private constant WEATHER_SHAPE = "tuple(observationTimestamp:uint64,temperatureCentiCelsius:int32,humidityBps:uint16,windSpeedCms:uint32,"
         "windGustCms:uint32,precipitationMicrometers:uint32,pressurePa:uint32,conditionCode:uint16,"

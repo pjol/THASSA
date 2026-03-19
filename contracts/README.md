@@ -54,7 +54,7 @@ $ ./script/deploy_thassa.sh
 
 The deploy runner:
 - loads `contracts/.env`
-- requires `DEPLOY_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, `VERIFIER_PUBLIC_KEY`, `USER_ACCOUNT_PUBLIC_KEY`
+- requires `DEPLOY_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, `NODE_SIGNER_PUBLIC_KEY`, `USER_ACCOUNT_PUBLIC_KEY`
 - broadcasts with `--rpc-url "$DEPLOY_RPC_URL"` so transactions are sent to the chain defined in the env file
 
 Deploy only the weather oracle (against an existing hub):

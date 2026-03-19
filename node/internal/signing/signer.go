@@ -14,19 +14,20 @@ import (
 )
 
 var updateTypeHash = crypto.Keccak256Hash(
-	[]byte("SignedUpdate(address hub,uint256 chainId,bytes32 payloadHash,uint256 bidId,bool autoFlow)"),
+	[]byte("ProofUpdate(address hub,uint256 chainId,bytes32 payloadHash,uint256 bidId,bool autoFlow)"),
 )
 
 type UpdatePayload struct {
-	Client        common.Address
-	CallbackData  []byte
-	QueryHash     common.Hash
-	ShapeHash     common.Hash
-	ModelHash     common.Hash
-	ClientVersion uint64
-	Expiry        uint64
-	Nonce         *big.Int
-	Signer        common.Address
+	Client           common.Address
+	CallbackData     []byte
+	QueryHash        common.Hash
+	ShapeHash        common.Hash
+	ModelHash        common.Hash
+	ClientVersion    uint64
+	RequestTimestamp uint64
+	Expiry           uint64
+	Nonce            *big.Int
+	Fulfiller        common.Address
 }
 
 type SignRequest struct {
@@ -116,6 +117,7 @@ func ComputeDigest(request SignRequest) (common.Hash, error) {
 		"bytes32",
 		"uint64",
 		"uint64",
+		"uint64",
 		"uint256",
 		"address",
 	)
@@ -131,9 +133,10 @@ func ComputeDigest(request SignRequest) (common.Hash, error) {
 		request.Payload.ShapeHash,
 		request.Payload.ModelHash,
 		request.Payload.ClientVersion,
+		request.Payload.RequestTimestamp,
 		request.Payload.Expiry,
 		request.Payload.Nonce,
-		request.Payload.Signer,
+		request.Payload.Fulfiller,
 	)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("pack payload: %w", err)

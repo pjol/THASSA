@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-interface IThassaSanFranciscoWeatherOracle {
+import {IThassaOracle} from "./IThassaOracle.sol";
+
+interface IThassaSanFranciscoWeatherOracle is IThassaOracle {
     struct WeatherReport {
         uint64 observationTimestamp;
         int32 temperatureCentiCelsius;
