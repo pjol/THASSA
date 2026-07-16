@@ -1,0 +1,6 @@
+[package]
+name = "thassa_primus_payload"
+type = "bin"
+authors = [""]
+
+[dependencies]

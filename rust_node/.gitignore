@@ -2,3 +2,6 @@ bridge/node_modules
 bridge/package-lock.json
 _archive
 target
+logs
+noir/**/target
+noir/**/Prover.toml

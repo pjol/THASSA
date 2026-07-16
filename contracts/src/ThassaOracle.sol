@@ -10,6 +10,8 @@ import {IThassaOracle} from "../interfaces/IThassaOracle.sol";
 abstract contract ThassaOracle is IThassaOracle {
     using SafeERC20 for IERC20;
 
+    uint64 public constant DEFAULT_MAX_ATTESTATION_AGE = 10 minutes;
+
     address public immutable override thassaHub;
 
     string private _query;
@@ -52,6 +54,10 @@ abstract contract ThassaOracle is IThassaOracle {
         return _fulfilled;
     }
 
+    function maxAttestationAge() public view virtual override returns (uint64) {
+        return DEFAULT_MAX_ATTESTATION_AGE;
+    }
+
     function oracleSpec() external view override returns (OracleSpec memory) {
         return OracleSpec({query: _query, expectedShape: _expectedShape, model: _model, clientVersion: clientVersion});
     }
@@ -61,7 +67,17 @@ abstract contract ThassaOracle is IThassaOracle {
         paymentToken.safeTransferFrom(msg.sender, address(this), bidAmount);
         paymentToken.forceApprove(thassaHub, bidAmount);
 
-        bidId = IThassaHub(thassaHub).placeBid(address(this), bidAmount);
+        bidId = IThassaHub(thassaHub).placeBidFor(msg.sender, address(this), bidAmount);
+        emit BidForwarded(msg.sender, bidId, bidAmount);
+    }
+
+    /// @notice Places a hub bid funded by tokens already held by this oracle, binding `inputData`
+    ///         into the bid. The oracle contract itself is recorded as the bid requester.
+    function _placeBidWithInputData(uint256 bidAmount, bytes memory inputData) internal returns (uint256 bidId) {
+        IERC20 paymentToken = IERC20(IThassaHub(thassaHub).paymentToken());
+        paymentToken.forceApprove(thassaHub, bidAmount);
+
+        bidId = IThassaHub(thassaHub).placeBidWithInputData(address(this), bidAmount, inputData);
         emit BidForwarded(msg.sender, bidId, bidAmount);
     }
 

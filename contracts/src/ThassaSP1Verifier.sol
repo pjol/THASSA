@@ -50,12 +50,12 @@ contract ThassaSP1Verifier is IThassaVerifier {
 
         IThassaHub.ProofCommitment memory commitment = abi.decode(proof.publicValues, (IThassaHub.ProofCommitment));
 
-        return commitment.digest == digest && commitment.bidId == bidId && commitment.autoFlow == autoFlow
+        return commitment.llmFulfilled && commitment.digest == digest && commitment.bidId == bidId && commitment.autoFlow == autoFlow
             && commitment.client == update.client && commitment.fulfiller == update.fulfiller
             && commitment.queryHash == update.queryHash && commitment.shapeHash == update.shapeHash
             && commitment.modelHash == update.modelHash && commitment.clientVersion == update.clientVersion
-            && commitment.requestTimestamp == update.requestTimestamp && commitment.expiry == update.expiry
-            && commitment.nonce == update.nonce
+            && commitment.inputDataHash == keccak256(update.inputData) && commitment.responseId == update.responseId
+            && commitment.requestTimestamp == update.requestTimestamp
             && commitment.callbackHash == keccak256(update.callbackData);
     }
 }

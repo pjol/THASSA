@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Thassa theme variables (spec §7). Light: white canvas, near-black ink,
+   black as the highlight neutral. Dark INVERTS black↔white; brand blue
+   #307CDE is constant across both. Channels only — Tailwind adds alpha. */
+:root {
+  --bg: 255 255 255;
+  --fg: 10 10 10;
+  --card: 255 255 255;
+  --surface: 245 245 246;
+  --muted: 111 111 116;
+  --edge: 228 228 231;
+  --accent: 10 10 10; /* black highlight in light mode */
+  --accent-fg: 255 255 255;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: 10 10 10;
+  --fg: 255 255 255;
+  --card: 18 18 19;
+  --surface: 28 28 30;
+  --muted: 152 152 157;
+  --edge: 42 42 45;
+  --accent: 255 255 255; /* white becomes the highlight in dark mode */
+  --accent-fg: 10 10 10;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: rgb(var(--bg));
+  color: rgb(var(--fg));
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-edge bg-card;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-brand {
+    @apply btn bg-brand text-white hover:bg-brand/90;
+  }
+  .btn-accent {
+    @apply btn bg-accent text-accent-fg hover:opacity-90;
+  }
+  .btn-ghost {
+    @apply btn border border-edge bg-card text-fg hover:bg-surface;
+  }
+  .input {
+    @apply w-full rounded-xl border border-edge bg-card px-3.5 py-2.5 text-sm text-fg placeholder:text-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25;
+  }
+  .skeleton {
+    @apply relative overflow-hidden rounded-xl bg-surface;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-fg/5 to-transparent;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Story avatar ring: brand gradient for unseen, edge for seen. */
+  .story-ring {
+    background: conic-gradient(from 210deg, #307cde, #6ec1ff, #307cde);
+  }
+  .story-ring-seen {
+    background: rgb(var(--edge));
+  }
+  .snap-reels {
+    scroll-snap-type: y mandatory;
+  }
+  .snap-reel {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+}

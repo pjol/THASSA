@@ -5,7 +5,7 @@ use ethers::{
     abi::{Abi, RawLog, Token},
     contract::Contract,
     providers::{Http, Middleware, Provider},
-    types::{Address, BlockNumber, Filter, Log, U256},
+    types::{Address, BlockNumber, Filter, Log, H256, U256},
 };
 use serde::{Deserialize, Serialize};
 
@@ -109,10 +109,53 @@ impl ChainContracts {
             .map_err(Into::into)
     }
 
+    pub async fn read_verifier_module(&self) -> Result<Address> {
+        let contract = self.hub();
+        contract
+            .method::<_, Address>("verifierModule", ())?
+            .call()
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn read_noir_verifier_module_info(
+        &self,
+        verifier_module: Address,
+    ) -> Result<NoirVerifierModuleInfo> {
+        let contract = Contract::new(
+            verifier_module,
+            default_noir_verifier_abi(),
+            self.provider.clone(),
+        );
+        let proof_scheme = contract
+            .method::<_, U256>("PROOF_SCHEME_NOIR", ())?
+            .call()
+            .await
+            .context("read Noir verifier proof scheme")?;
+        let noir_verifier = contract
+            .method::<_, Address>("noirVerifier", ())?
+            .call()
+            .await
+            .context("read Noir verifier address")?;
+        let expected_attestor = contract
+            .method::<_, Address>("expectedAttestor", ())?
+            .call()
+            .await
+            .context("read Noir verifier expected attestor")?;
+
+        Ok(NoirVerifierModuleInfo {
+            proof_scheme: proof_scheme.as_u32(),
+            noir_verifier,
+            expected_attestor,
+        })
+    }
+
     pub async fn read_bid(&self, bid_id: U256) -> Result<HubBid> {
         let contract = self.hub();
-        let result: (Address, Address, U256, bool) = contract
-            .method::<_, (Address, Address, U256, bool)>("getBid", bid_id)?
+        let result: (Address, Address, U256, bool, U256, U256, U256, U256, Address, H256, H256) = contract
+            .method::<_, (Address, Address, U256, bool, U256, U256, U256, U256, Address, H256, H256)>(
+                "getBid", bid_id,
+            )?
             .call()
             .await?;
         Ok(HubBid {
@@ -120,6 +163,13 @@ impl ChainContracts {
             client: result.1,
             amount: result.2,
             is_open: result.3,
+            base_fee: result.4,
+            priority_fee: result.5,
+            protocol_fee: result.6,
+            node_fee: result.7,
+            allocated_node: result.8,
+            input_data_hash: result.9,
+            response_id: result.10,
         })
     }
 
@@ -189,6 +239,20 @@ pub struct HubBid {
     pub client: Address,
     pub amount: U256,
     pub is_open: bool,
+    pub base_fee: U256,
+    pub priority_fee: U256,
+    pub protocol_fee: U256,
+    pub node_fee: U256,
+    pub allocated_node: Address,
+    pub input_data_hash: H256,
+    pub response_id: H256,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NoirVerifierModuleInfo {
+    pub proof_scheme: u32,
+    pub noir_verifier: Address,
+    pub expected_attestor: Address,
 }
 
 pub fn load_abi(path: impl AsRef<Path>) -> Result<Abi> {
@@ -206,6 +270,17 @@ fn default_erc20_abi() -> Abi {
         ]"#,
     )
     .expect("default ERC20 ABI is valid")
+}
+
+fn default_noir_verifier_abi() -> Abi {
+    serde_json::from_str(
+        r#"[
+            {"type":"function","name":"PROOF_SCHEME_NOIR","stateMutability":"view","inputs":[],"outputs":[{"name":"","type":"uint8"}]},
+            {"type":"function","name":"noirVerifier","stateMutability":"view","inputs":[],"outputs":[{"name":"","type":"address"}]},
+            {"type":"function","name":"expectedAttestor","stateMutability":"view","inputs":[],"outputs":[{"name":"","type":"address"}]}
+        ]"#,
+    )
+    .expect("default Noir verifier ABI is valid")
 }
 
 fn decode_bid_placed_log(log: Log, params: Vec<ethers::abi::LogParam>) -> Result<BidPlacedEvent> {

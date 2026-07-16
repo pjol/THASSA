@@ -2,6 +2,7 @@ pub mod config;
 pub mod contracts;
 pub mod format;
 pub mod logging;
+pub mod noir;
 pub mod primus;
 pub mod prover;
 pub mod server;

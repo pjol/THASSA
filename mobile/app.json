@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Thassa",
+    "slug": "thassa",
+    "version": "1.0.0",
+    "scheme": "thassa",
+    "icon": "./assets/icon.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#307CDE"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.thassa.client",
+      "usesAppleSignIn": true
+    },
+    "android": {
+      "package": "app.thassa.client"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-video",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos so you can share them in posts, stories, and messages."
+        }
+      ]
+    ],
+    "extra": {
+      "appVersion": "1.0.0"
+    }
+  }
+}

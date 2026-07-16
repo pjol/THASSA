@@ -12,6 +12,7 @@ pub struct OracleSpec {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProofCommitmentJson {
+    pub llm_fulfilled: bool,
     pub digest: String,
     pub bid_id: String,
     pub auto_flow: bool,
@@ -20,10 +21,10 @@ pub struct ProofCommitmentJson {
     pub query_hash: String,
     pub shape_hash: String,
     pub model_hash: String,
+    pub input_data_hash: String,
+    pub response_id: String,
     pub client_version: u64,
     pub request_timestamp: u64,
-    pub expiry: u64,
-    pub nonce: String,
     pub callback_hash: String,
 }
 
@@ -34,8 +35,8 @@ pub struct ProofProgramInput {
     pub attestation_data_json: String,
     pub expected_attestor: String,
     pub allowed_urls: Vec<String>,
+    pub input_data_json: String,
     pub openai_request_body_json: String,
-    pub api_key: String,
     pub callback_data_hex: String,
     pub commitment: ProofCommitmentJson,
 }

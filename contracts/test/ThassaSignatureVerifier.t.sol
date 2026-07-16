@@ -49,13 +49,13 @@ contract ThassaSignatureVerifierTest is Test {
         return IThassaHub.UpdateEnvelope({
             client: address(0x1234),
             callbackData: hex"1234",
+            inputData: bytes("{}"),
+            responseId: keccak256("response-id"),
             queryHash: keccak256("query"),
             shapeHash: keccak256("shape"),
             modelHash: keccak256("model"),
             clientVersion: 1,
             requestTimestamp: 100,
-            expiry: 200,
-            nonce: 300,
             fulfiller: fulfiller
         });
     }

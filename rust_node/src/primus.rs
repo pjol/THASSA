@@ -9,6 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use ethers::{
     abi::{encode_packed, Token},
+    core::k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey},
     signers::{LocalWallet, Signer},
     types::{Address, Signature, H256},
     utils::keccak256,
@@ -28,6 +29,14 @@ use crate::types::{
 };
 
 const DEFAULT_PADO_ATTESTOR: &str = "0xDB736B13E2f522dBE18B2015d0291E4b193D8eF6";
+
+#[derive(Clone, Debug)]
+pub struct RecoveredAttestorPubkey {
+    pub address: Address,
+    pub public_key_x: [u8; 32],
+    pub public_key_y: [u8; 32],
+    pub normalized_signature: [u8; 64],
+}
 
 #[derive(Clone, Debug)]
 pub struct AlgorithmUrls {
@@ -537,6 +546,7 @@ impl PrimusClient {
                 "Primus attestation signature did not match expected attestor"
             ));
         }
+        validate_single_request_attestation(&attestation_data)?;
 
         Ok(AttestationBundle {
             request_id: attestation_params.requestid.clone(),
@@ -562,6 +572,104 @@ impl PrimusClient {
             .context("recover attestation signer")?;
         Ok(recovered == self.expected_attestor)
     }
+}
+
+fn validate_single_request_attestation(attestation_data: &PrimusAttestationData) -> Result<()> {
+    if attestation_data.public_data.len() != 1 {
+        return Err(anyhow!(
+            "Primus attestation must contain exactly one public_data entry; got {}",
+            attestation_data.public_data.len()
+        ));
+    }
+
+    let public_data = &attestation_data.public_data[0];
+    if public_data.attestation.request.len() != 1 {
+        return Err(anyhow!(
+            "Primus attestation must contain exactly one request; got {}",
+            public_data.attestation.request.len()
+        ));
+    }
+    if public_data.attestation.response_resolves.len() != 1 {
+        return Err(anyhow!(
+            "Primus attestation must contain exactly one response_resolves group; got {}",
+            public_data.attestation.response_resolves.len()
+        ));
+    }
+
+    let response_group = &public_data.attestation.response_resolves[0];
+    if response_group.one_url_response_resolve.len() != 1 {
+        return Err(anyhow!(
+            "Primus attestation must contain exactly one response resolve; got {}",
+            response_group.one_url_response_resolve.len()
+        ));
+    }
+
+    let plain_response_count = attestation_data
+        .private_data
+        .plain_json_response
+        .as_ref()
+        .map_or(0, Vec::len);
+    if plain_response_count != 1 {
+        return Err(anyhow!(
+            "Primus attestation must contain exactly one plain JSON response; got {}",
+            plain_response_count
+        ));
+    }
+
+    Ok(())
+}
+
+pub fn attestation_message_hash(attestation: &Attestation) -> Result<H256> {
+    Ok(H256::from(keccak256(encode_attestation(attestation)?)))
+}
+
+pub fn recover_attestation_pubkey(
+    attestation: &Attestation,
+    signature_hex: &str,
+) -> Result<RecoveredAttestorPubkey> {
+    let digest = attestation_message_hash(attestation)?;
+    let signature = signature_hex
+        .parse::<Signature>()
+        .context("parse attestation signature")?;
+
+    let mut r_bytes = [0u8; 32];
+    let mut s_bytes = [0u8; 32];
+    signature.r.to_big_endian(&mut r_bytes);
+    signature.s.to_big_endian(&mut s_bytes);
+
+    let recovery_byte = if signature.v >= 27 {
+        (signature.v - 27) as u8
+    } else {
+        signature.v as u8
+    };
+    let recovery_id =
+        RecoveryId::from_byte(recovery_byte).ok_or_else(|| anyhow!("invalid recovery id"))?;
+    let raw_signature =
+        K256Signature::from_scalars(r_bytes, s_bytes).context("build recoverable signature")?;
+    let verifying_key =
+        VerifyingKey::recover_from_prehash(digest.as_bytes(), &raw_signature, recovery_id)
+            .context("recover verifying key from attestation signature")?;
+
+    let normalized_signature = raw_signature.normalize_s().unwrap_or(raw_signature);
+    let point = verifying_key.to_encoded_point(false);
+    let pubkey_bytes = point.as_bytes();
+    if pubkey_bytes.len() != 65 || pubkey_bytes[0] != 0x04 {
+        return Err(anyhow!(
+            "unexpected uncompressed secp256k1 public key encoding"
+        ));
+    }
+
+    let mut public_key_x = [0u8; 32];
+    let mut public_key_y = [0u8; 32];
+    public_key_x.copy_from_slice(&pubkey_bytes[1..33]);
+    public_key_y.copy_from_slice(&pubkey_bytes[33..65]);
+
+    Ok(RecoveredAttestorPubkey {
+        address: Address::from_slice(&keccak256(&pubkey_bytes[1..])[12..]),
+        public_key_x,
+        public_key_y,
+        normalized_signature: normalized_signature.to_bytes().into(),
+    })
 }
 
 fn assemble_request_value(request: &Value) -> Result<Value> {
@@ -718,7 +826,7 @@ fn get_type(op: &str) -> String {
     }
 }
 
-fn encode_attestation(attestation: &Attestation) -> Result<Vec<u8>> {
+pub fn encode_attestation(attestation: &Attestation) -> Result<Vec<u8>> {
     let request_hash = hash_request(&attestation.request)?;
     let response_hash = hash_response(&attestation.response_resolves)?;
 

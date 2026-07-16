@@ -17,6 +17,7 @@ serde_json = "1"
 sha2 = "0.10"
 sp1-sdk = { version = "=5.2.4", default-features = false, features = ["network", "reserved-capacity", "native-gnark"] }
 tokio = { version = "1", features = ["fs", "macros", "net", "process", "rt-multi-thread", "signal", "time"] }
+toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 thassa-zkvm-lib = { path = "zkvm/lib" }

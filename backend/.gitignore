@@ -1,0 +1,12 @@
+# Secrets (relayer key, Stripe, Privy, S3)
+.env
+.env.local
+
+# Local dev uploads (IN_PRODUCTION=false)
+uploads/
+
+# Build artifacts
+bin/
+*.test
+
+.DS_Store

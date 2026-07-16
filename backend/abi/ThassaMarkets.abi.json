@@ -1,0 +1,360 @@
+[
+  {
+    "type": "function",
+    "name": "createMarket",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "question", "type": "string"},
+      {"name": "settlementQuery", "type": "string"},
+      {"name": "initialOrder", "type": "tuple", "components": [
+        {"name": "marketId", "type": "uint256"},
+        {"name": "side", "type": "uint8"},
+        {"name": "price", "type": "uint8"},
+        {"name": "shares", "type": "uint80"},
+        {"name": "maxCost", "type": "uint256"},
+        {"name": "affiliatePostId", "type": "uint256"},
+        {"name": "expiry", "type": "uint64"},
+        {"name": "nonce", "type": "uint256"},
+        {"name": "maker", "type": "address"}
+      ]},
+      {"name": "auth", "type": "tuple", "components": [
+        {"name": "value", "type": "uint256"},
+        {"name": "validAfter", "type": "uint256"},
+        {"name": "validBefore", "type": "uint256"},
+        {"name": "authNonce", "type": "bytes32"},
+        {"name": "v", "type": "uint8"},
+        {"name": "r", "type": "bytes32"},
+        {"name": "s", "type": "bytes32"}
+      ]}
+    ],
+    "outputs": [{"name": "marketId", "type": "uint256"}]
+  },
+  {
+    "type": "function",
+    "name": "createMarketDirect",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "question", "type": "string"},
+      {"name": "settlementQuery", "type": "string"},
+      {"name": "side", "type": "uint8"},
+      {"name": "price", "type": "uint8"},
+      {"name": "shares", "type": "uint80"}
+    ],
+    "outputs": [{"name": "marketId", "type": "uint256"}]
+  },
+  {
+    "type": "function",
+    "name": "placeOrdersBatch",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "orders", "type": "tuple[]", "components": [
+        {"name": "marketId", "type": "uint256"},
+        {"name": "side", "type": "uint8"},
+        {"name": "price", "type": "uint8"},
+        {"name": "shares", "type": "uint80"},
+        {"name": "maxCost", "type": "uint256"},
+        {"name": "affiliatePostId", "type": "uint256"},
+        {"name": "expiry", "type": "uint64"},
+        {"name": "nonce", "type": "uint256"},
+        {"name": "maker", "type": "address"}
+      ]},
+      {"name": "auths", "type": "tuple[]", "components": [
+        {"name": "value", "type": "uint256"},
+        {"name": "validAfter", "type": "uint256"},
+        {"name": "validBefore", "type": "uint256"},
+        {"name": "authNonce", "type": "bytes32"},
+        {"name": "v", "type": "uint8"},
+        {"name": "r", "type": "bytes32"},
+        {"name": "s", "type": "bytes32"}
+      ]}
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "placeOrder",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "marketId", "type": "uint256"},
+      {"name": "side", "type": "uint8"},
+      {"name": "price", "type": "uint8"},
+      {"name": "shares", "type": "uint80"},
+      {"name": "affiliatePostId", "type": "uint256"}
+    ],
+    "outputs": [{"name": "orderId", "type": "uint256"}]
+  },
+  {
+    "type": "function",
+    "name": "cancelOrder",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "marketId", "type": "uint256"},
+      {"name": "orderId", "type": "uint256"}
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "settleMarket",
+    "stateMutability": "nonpayable",
+    "inputs": [{"name": "marketId", "type": "uint256"}],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "settleMarketWithAuth",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "marketId", "type": "uint256"},
+      {"name": "payer", "type": "address"},
+      {"name": "auth", "type": "tuple", "components": [
+        {"name": "value", "type": "uint256"},
+        {"name": "validAfter", "type": "uint256"},
+        {"name": "validBefore", "type": "uint256"},
+        {"name": "authNonce", "type": "bytes32"},
+        {"name": "v", "type": "uint8"},
+        {"name": "r", "type": "bytes32"},
+        {"name": "s", "type": "bytes32"}
+      ]}
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "orderDigest",
+    "stateMutability": "view",
+    "inputs": [{"name": "order", "type": "tuple", "components": [
+      {"name": "marketId", "type": "uint256"},
+      {"name": "side", "type": "uint8"},
+      {"name": "price", "type": "uint8"},
+      {"name": "shares", "type": "uint80"},
+      {"name": "maxCost", "type": "uint256"},
+      {"name": "affiliatePostId", "type": "uint256"},
+      {"name": "expiry", "type": "uint64"},
+      {"name": "nonce", "type": "uint256"},
+      {"name": "maker", "type": "address"}
+    ]}],
+    "outputs": [{"name": "", "type": "bytes32"}]
+  },
+  {
+    "type": "function",
+    "name": "bidInputData",
+    "stateMutability": "view",
+    "inputs": [{"name": "bidId", "type": "uint256"}],
+    "outputs": [{"name": "", "type": "bytes"}]
+  },
+  {
+    "type": "function",
+    "name": "getOrder",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "marketId", "type": "uint256"},
+      {"name": "orderId", "type": "uint256"}
+    ],
+    "outputs": [
+      {"name": "maker", "type": "address"},
+      {"name": "side", "type": "uint8"},
+      {"name": "price", "type": "uint8"},
+      {"name": "sharesRemaining", "type": "uint80"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "positionOf",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "marketId", "type": "uint256"},
+      {"name": "holder", "type": "address"}
+    ],
+    "outputs": [
+      {"name": "yesShares", "type": "uint80"},
+      {"name": "noShares", "type": "uint80"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "freeBalance",
+    "stateMutability": "view",
+    "inputs": [{"name": "account", "type": "address"}],
+    "outputs": [{"name": "", "type": "uint256"}]
+  },
+  {
+    "type": "function",
+    "name": "redeem",
+    "stateMutability": "nonpayable",
+    "inputs": [{"name": "marketId", "type": "uint256"}],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "stateMutability": "nonpayable",
+    "inputs": [{"name": "amount", "type": "uint256"}],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "claimCreatorFees",
+    "stateMutability": "nonpayable",
+    "inputs": [{"name": "marketId", "type": "uint256"}],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "claimAffiliateFees",
+    "stateMutability": "nonpayable",
+    "inputs": [{"name": "postId", "type": "uint256"}],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "registerAffiliatePost",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "postId", "type": "uint256"},
+      {"name": "payee", "type": "address"}
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "getMarket",
+    "stateMutability": "view",
+    "inputs": [{"name": "marketId", "type": "uint256"}],
+    "outputs": [{"name": "market", "type": "tuple", "components": [
+      {"name": "creator", "type": "address"},
+      {"name": "createdAt", "type": "uint64"},
+      {"name": "status", "type": "uint8"},
+      {"name": "settled", "type": "bool"},
+      {"name": "direction", "type": "bool"},
+      {"name": "pendingBidId", "type": "uint256"},
+      {"name": "creatorFeesAccrued", "type": "uint256"},
+      {"name": "volumeMatched", "type": "uint256"}
+    ]}]
+  },
+  {
+    "type": "function",
+    "name": "bestPrices",
+    "stateMutability": "view",
+    "inputs": [{"name": "marketId", "type": "uint256"}],
+    "outputs": [
+      {"name": "bestYes", "type": "uint8"},
+      {"name": "bestNo", "type": "uint8"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "nonces",
+    "stateMutability": "view",
+    "inputs": [{"name": "maker", "type": "address"}],
+    "outputs": [{"name": "", "type": "uint256"}]
+  },
+  {
+    "type": "event",
+    "name": "MarketCreated",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "creator", "type": "address", "indexed": true},
+      {"name": "question", "type": "string", "indexed": false},
+      {"name": "settlementQuery", "type": "string", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "OrderPlaced",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "orderId", "type": "uint256", "indexed": true},
+      {"name": "maker", "type": "address", "indexed": true},
+      {"name": "side", "type": "uint8", "indexed": false},
+      {"name": "price", "type": "uint8", "indexed": false},
+      {"name": "shares", "type": "uint80", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "OrderMatched",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "takerOrderId", "type": "uint256", "indexed": false},
+      {"name": "makerOrderId", "type": "uint256", "indexed": false},
+      {"name": "price", "type": "uint8", "indexed": false},
+      {"name": "shares", "type": "uint80", "indexed": false},
+      {"name": "fee", "type": "uint256", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "OrderRejected",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "maker", "type": "address", "indexed": true},
+      {"name": "reason", "type": "string", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "OrderCancelled",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "orderId", "type": "uint256", "indexed": true}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "MarketMatched",
+    "inputs": [{"name": "marketId", "type": "uint256", "indexed": true}]
+  },
+  {
+    "type": "event",
+    "name": "SettlementRequested",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "bidId", "type": "uint256", "indexed": false},
+      {"name": "caller", "type": "address", "indexed": true}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "MarketSettled",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "direction", "type": "bool", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Redeemed",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "user", "type": "address", "indexed": true},
+      {"name": "amount", "type": "uint256", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Withdrawn",
+    "inputs": [
+      {"name": "user", "type": "address", "indexed": true},
+      {"name": "amount", "type": "uint256", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "CreatorFeesClaimed",
+    "inputs": [
+      {"name": "marketId", "type": "uint256", "indexed": true},
+      {"name": "creator", "type": "address", "indexed": true},
+      {"name": "amount", "type": "uint256", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "AffiliateFeesClaimed",
+    "inputs": [
+      {"name": "postId", "type": "uint256", "indexed": true},
+      {"name": "payee", "type": "address", "indexed": true},
+      {"name": "amount", "type": "uint256", "indexed": false}
+    ]
+  }
+]

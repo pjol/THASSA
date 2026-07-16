@@ -8,7 +8,6 @@ use ethabi::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use thassa_zkvm_lib::{OracleSpec, ProofCommitmentJson, ProofProgramInput};
 use tiny_keccak::{Hasher, Keccak};
 use zktls_att_verification::attestation_data::verify_attestation_data;
@@ -45,6 +44,12 @@ fn run() -> Result<()> {
         .public_data
         .first()
         .ok_or_else(|| anyhow!("attestation public_data cannot be empty"))?;
+    if attestation_data.public_data.len() != 1 {
+        return Err(anyhow!(
+            "attestation must contain exactly one public_data entry; got {}",
+            attestation_data.public_data.len()
+        ));
+    }
     let fulfiller = parse_address(&input.commitment.fulfiller)?;
     let recipient = parse_address(&public_data.attestation.recipient)?;
     if recipient != fulfiller {
@@ -57,6 +62,25 @@ fn run() -> Result<()> {
         .request
         .first()
         .ok_or_else(|| anyhow!("attestation request cannot be empty"))?;
+    if public_data.attestation.request.len() != 1 {
+        return Err(anyhow!(
+            "attestation must contain exactly one request; got {}",
+            public_data.attestation.request.len()
+        ));
+    }
+    if public_data.attestation.responseResolves.len() != 1 {
+        return Err(anyhow!(
+            "attestation must contain exactly one response_resolves group; got {}",
+            public_data.attestation.responseResolves.len()
+        ));
+    }
+    let response_group = &public_data.attestation.responseResolves[0];
+    if response_group.oneUrlResponseResolve.len() != 1 {
+        return Err(anyhow!(
+            "attestation must contain exactly one response resolve; got {}",
+            response_group.oneUrlResponseResolve.len()
+        ));
+    }
     if !request.method.eq_ignore_ascii_case("POST") {
         return Err(anyhow!("attested request method was not POST"));
     }
@@ -70,6 +94,11 @@ fn run() -> Result<()> {
         .first()
         .and_then(|group| group.first())
         .ok_or_else(|| anyhow!("verified attestation messages cannot be empty"))?;
+    if messages.len() != 1 || messages.first().map_or(0, Vec::len) != 1 {
+        return Err(anyhow!(
+            "verified attestation messages must contain exactly one response message"
+        ));
+    }
     let content = first_message
         .msg
         .get("choices")
@@ -93,6 +122,9 @@ fn run() -> Result<()> {
     }
 
     let commitment = &input.commitment;
+    if !commitment.llm_fulfilled {
+        return Err(anyhow!("commitment marked LLM response as unfulfilled"));
+    }
     if commitment.client_version != input.oracle_spec.client_version {
         return Err(anyhow!(
             "commitment client version did not match oracle spec"
@@ -110,10 +142,9 @@ fn run() -> Result<()> {
     if hex_32(&model_hash) != normalize_hex_32(&commitment.model_hash)? {
         return Err(anyhow!("model hash mismatch"));
     }
-
-    let derived_nonce = derive_nonce(commitment.request_timestamp, &input.api_key);
-    if derived_nonce != parse_u256(&commitment.nonce)? {
-        return Err(anyhow!("nonce mismatch"));
+    let input_data_hash = keccak256_bytes(input.input_data_json.as_bytes());
+    if hex_32(&input_data_hash) != normalize_hex_32(&commitment.input_data_hash)? {
+        return Err(anyhow!("input data hash mismatch"));
     }
 
     let callback_hash = keccak256_bytes(&callback_data);
@@ -131,6 +162,7 @@ fn encode_commitment(
     oracle_spec: &OracleSpec,
 ) -> Result<Vec<u8>> {
     Ok(ethabi::encode(&[
+        Token::Bool(commitment.llm_fulfilled),
         Token::FixedBytes(parse_h256(&commitment.digest)?.0.to_vec()),
         Token::Uint(parse_u256(&commitment.bid_id)?),
         Token::Bool(commitment.auto_flow),
@@ -139,10 +171,10 @@ fn encode_commitment(
         Token::FixedBytes(keccak256_bytes(oracle_spec.query.as_bytes()).to_vec()),
         Token::FixedBytes(keccak256_bytes(oracle_spec.expected_shape.as_bytes()).to_vec()),
         Token::FixedBytes(keccak256_bytes(oracle_spec.model.as_bytes()).to_vec()),
+        Token::FixedBytes(parse_h256(&commitment.input_data_hash)?.0.to_vec()),
+        Token::FixedBytes(parse_h256(&commitment.response_id)?.0.to_vec()),
         Token::Uint(U256::from(commitment.client_version)),
         Token::Uint(U256::from(commitment.request_timestamp)),
-        Token::Uint(U256::from(commitment.expiry)),
-        Token::Uint(parse_u256(&commitment.nonce)?),
         Token::FixedBytes(parse_h256(&commitment.callback_hash)?.0.to_vec()),
     ]))
 }
@@ -320,14 +352,6 @@ fn value_to_int(value: &Value) -> Result<U256> {
     } else {
         parse_u256(&raw)
     }
-}
-
-fn derive_nonce(request_timestamp: u64, api_key: &str) -> U256 {
-    let mut hasher = Sha256::new();
-    hasher.update(request_timestamp.to_be_bytes());
-    hasher.update(api_key.as_bytes());
-    let digest = hasher.finalize();
-    U256::from_big_endian(&digest)
 }
 
 fn parse_address(raw: &str) -> Result<Address> {

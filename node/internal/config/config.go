@@ -34,6 +34,11 @@ type Config struct {
 	ABIDir                  string
 	AutoFulfillInputData    map[string]any
 	AutoFulfillInputDataRaw string
+
+	// NodeMCPURL points at the backend MCP HTTP endpoint used to refresh the resolution-source
+	// registry (spec 6.5b). Empty = use the built-in default registry only.
+	NodeMCPURL         string
+	SourceFetchTimeout time.Duration
 }
 
 func Load() (Config, error) {
@@ -95,6 +100,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid AUTO_FULFILL_INPUT_DATA_JSON: %w", err)
 	}
 
+	sourceFetchTimeoutSeconds, err := envUint64("SOURCE_FETCH_TIMEOUT_SECONDS", 10)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Port:                    envString("PORT", "8080"),
 		OpenAIAPIKey:            openAIAPIKey,
@@ -114,6 +124,8 @@ func Load() (Config, error) {
 		ABIDir:                  envString("ABI_DIR", "abi"),
 		AutoFulfillInputData:    autoFulfillInputData,
 		AutoFulfillInputDataRaw: autoFulfillInputDataRaw,
+		NodeMCPURL:              envString("NODE_MCP_URL", ""),
+		SourceFetchTimeout:      time.Duration(sourceFetchTimeoutSeconds) * time.Second,
 	}, nil
 }
 

@@ -38,9 +38,8 @@ type UpdateRequest struct {
 	AutoFlow         bool              `json:"autoFlow,omitempty"`
 	ClientVersion    uint64            `json:"clientVersion,omitempty"`
 	RequestTimestamp uint64            `json:"requestTimestamp,omitempty"`
-	Expiry           uint64            `json:"expiry,omitempty"`
-	TTLSeconds       uint64            `json:"ttlSeconds,omitempty"`
-	Nonce            uint64            `json:"nonce,omitempty"`
+	InputDataHex     string            `json:"inputDataHex,omitempty"`
+	ResponseID       string            `json:"responseId,omitempty"`
 	Query            string            `json:"query"`
 	InputData        map[string]any    `json:"inputData,omitempty"`
 	ExpectedShape    string            `json:"expectedShape,omitempty"`
@@ -72,13 +71,13 @@ type updateResponse struct {
 type updateEnvelopeJSON struct {
 	Client           string `json:"client"`
 	CallbackData     string `json:"callbackData"`
+	InputData        string `json:"inputData"`
+	ResponseID       string `json:"responseId"`
 	QueryHash        string `json:"queryHash"`
 	ShapeHash        string `json:"shapeHash"`
 	ModelHash        string `json:"modelHash"`
 	ClientVersion    uint64 `json:"clientVersion"`
 	RequestTimestamp uint64 `json:"requestTimestamp"`
-	Expiry           uint64 `json:"expiry"`
-	Nonce            string `json:"nonce"`
 	Fulfiller        string `json:"fulfiller"`
 }
 
@@ -311,22 +310,36 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		clientVersion = s.cfg.DefaultClientVersion
 	}
 
-	expiry := req.Expiry
 	requestTimestamp := req.RequestTimestamp
 	if requestTimestamp == 0 {
 		requestTimestamp = uint64(time.Now().Unix())
 	}
-	if expiry == 0 {
-		ttl := req.TTLSeconds
-		if ttl == 0 {
-			ttl = s.cfg.DefaultTTLSeconds
+
+	// The envelope inputData defaults to the hub's "{}" marker; auto-flow callers must supply
+	// the exact bytes bound into the bid so the digest matches.
+	envelopeInputData := []byte("{}")
+	if strings.TrimSpace(req.InputDataHex) != "" {
+		trimmed := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(req.InputDataHex), "0x"), "0X")
+		decoded, decodeErr := hex.DecodeString(trimmed)
+		if decodeErr != nil {
+			writeJSON(w, http.StatusBadRequest, jsonError{Error: fmt.Sprintf("inputDataHex: %v", decodeErr)})
+			return
 		}
-		expiry = requestTimestamp + ttl
+		envelopeInputData = decoded
 	}
 
-	nonce := req.Nonce
-	if nonce == 0 {
-		nonce = uint64(time.Now().UnixNano())
+	responseID := common.Hash{}
+	if strings.TrimSpace(req.ResponseID) != "" {
+		trimmed := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(req.ResponseID), "0x"), "0X")
+		if len(trimmed) != 64 {
+			writeJSON(w, http.StatusBadRequest, jsonError{Error: "responseId: must be 32-byte hex"})
+			return
+		}
+		if _, decodeErr := hex.DecodeString(trimmed); decodeErr != nil {
+			writeJSON(w, http.StatusBadRequest, jsonError{Error: fmt.Sprintf("responseId: %v", decodeErr)})
+			return
+		}
+		responseID = common.HexToHash("0x" + trimmed)
 	}
 
 	signResult, err := s.signer.SignUpdate(signing.SignRequest{
@@ -337,13 +350,13 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		Payload: signing.UpdatePayload{
 			Client:           common.HexToAddress(req.Client),
 			CallbackData:     callbackData,
+			InputData:        envelopeInputData,
+			ResponseID:       responseID,
 			QueryHash:        queryHash,
 			ShapeHash:        shapeHash,
 			ModelHash:        modelHash,
 			ClientVersion:    clientVersion,
 			RequestTimestamp: requestTimestamp,
-			Expiry:           expiry,
-			Nonce:            new(big.Int).SetUint64(nonce),
 			Fulfiller:        s.signer.Address(),
 		},
 	})
@@ -370,13 +383,13 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		UpdateEnvelope: updateEnvelopeJSON{
 			Client:           common.HexToAddress(req.Client).Hex(),
 			CallbackData:     "0x" + hex.EncodeToString(callbackData),
+			InputData:        "0x" + hex.EncodeToString(envelopeInputData),
+			ResponseID:       responseID.Hex(),
 			QueryHash:        queryHash.Hex(),
 			ShapeHash:        shapeHash.Hex(),
 			ModelHash:        modelHash.Hex(),
 			ClientVersion:    clientVersion,
 			RequestTimestamp: requestTimestamp,
-			Expiry:           expiry,
-			Nonce:            new(big.Int).SetUint64(nonce).String(),
 			Fulfiller:        s.signer.Address().Hex(),
 		},
 		ProofEnvelope: proofEnvelopeJSON{

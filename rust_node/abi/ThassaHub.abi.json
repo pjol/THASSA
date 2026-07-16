@@ -22,7 +22,51 @@
   },
   {
     "type": "function",
+    "name": "DEFAULT_MINIMUM_ATTESTATION_AGE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "allocateBid",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "autoFlowLockup",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "baseFee",
     "inputs": [],
     "outputs": [
       {
@@ -79,6 +123,16 @@
             "internalType": "bytes"
           },
           {
+            "name": "inputData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "responseId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
             "name": "queryHash",
             "type": "bytes32",
             "internalType": "bytes32"
@@ -102,16 +156,6 @@
             "name": "requestTimestamp",
             "type": "uint64",
             "internalType": "uint64"
-          },
-          {
-            "name": "expiry",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
           },
           {
             "name": "fulfiller",
@@ -155,6 +199,48 @@
         "name": "",
         "type": "bool",
         "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "delegateStake",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "delegatedStake",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -207,8 +293,56 @@
             "name": "isOpen",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "baseFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "priorityFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "protocolFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "nodeFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "allocatedNode",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "inputDataHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "responseId",
+            "type": "bytes32",
+            "internalType": "bytes32"
           }
         ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "minimumAttestationAge",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"
@@ -222,6 +356,67 @@
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nodeInfo",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "info",
+        "type": "tuple",
+        "internalType": "struct IThassaHub.NodeInfo",
+        "components": [
+          {
+            "name": "registered",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "metadataHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "selfStake",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "delegatedStake",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "stakeWeight",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fulfilledCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "earnedFees",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
       }
     ],
     "stateMutability": "view"
@@ -278,6 +473,259 @@
   },
   {
     "type": "function",
+    "name": "placeBidFor",
+    "inputs": [
+      {
+        "name": "requester",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "bidAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "placeBidForWithInputData",
+    "inputs": [
+      {
+        "name": "requester",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "bidAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "inputData",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "placeBidWithInputData",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "bidAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "inputData",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "placeBidWithPriority",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "priorityFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "placeBidWithPriorityAndInputData",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "priorityFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "inputData",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "protocolVault",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteBid",
+    "inputs": [
+      {
+        "name": "bidAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct IThassaHub.FeeQuote",
+        "components": [
+          {
+            "name": "baseFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "priorityFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "protocolFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "nodeFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteFees",
+    "inputs": [
+      {
+        "name": "priorityFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct IThassaHub.FeeQuote",
+        "components": [
+          {
+            "name": "baseFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "priorityFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "protocolFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "nodeFee",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "registerNode",
+    "inputs": [
+      {
+        "name": "metadataHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
     "outputs": [],
@@ -298,12 +746,77 @@
   },
   {
     "type": "function",
+    "name": "setMinimumAttestationAge",
+    "inputs": [
+      {
+        "name": "newMinimum",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setNodeActive",
+    "inputs": [
+      {
+        "name": "active",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setNodeMetadata",
+    "inputs": [
+      {
+        "name": "metadataHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setProtocolVault",
+    "inputs": [
+      {
+        "name": "newVault",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setVerifierModule",
     "inputs": [
       {
         "name": "newVerifierModule",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "stake",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -334,6 +847,16 @@
             "internalType": "bytes"
           },
           {
+            "name": "inputData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "responseId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
             "name": "queryHash",
             "type": "bytes32",
             "internalType": "bytes32"
@@ -357,16 +880,6 @@
             "name": "requestTimestamp",
             "type": "uint64",
             "internalType": "uint64"
-          },
-          {
-            "name": "expiry",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
           },
           {
             "name": "fulfiller",
@@ -421,6 +934,16 @@
             "internalType": "bytes"
           },
           {
+            "name": "inputData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "responseId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
             "name": "queryHash",
             "type": "bytes32",
             "internalType": "bytes32"
@@ -444,16 +967,6 @@
             "name": "requestTimestamp",
             "type": "uint64",
             "internalType": "uint64"
-          },
-          {
-            "name": "expiry",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nonce",
-            "type": "uint256",
-            "internalType": "uint256"
           },
           {
             "name": "fulfiller",
@@ -490,12 +1003,174 @@
   },
   {
     "type": "function",
+    "name": "submitManualUpdateWithPriority",
+    "inputs": [
+      {
+        "name": "update",
+        "type": "tuple",
+        "internalType": "struct IThassaHub.UpdateEnvelope",
+        "components": [
+          {
+            "name": "client",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "callbackData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "inputData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "responseId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "queryHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "shapeHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "modelHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "clientVersion",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "requestTimestamp",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "fulfiller",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      },
+      {
+        "name": "proof",
+        "type": "tuple",
+        "internalType": "struct IThassaHub.ProofEnvelope",
+        "components": [
+          {
+            "name": "scheme",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "publicValues",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "priorityFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "totalNodeFeesAccrued",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalProtocolFeesAccrued",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalStakeWeight",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "transferOwnership",
     "inputs": [
       {
         "name": "newOwner",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "undelegateStake",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "unstake",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -577,6 +1252,43 @@
   },
   {
     "type": "event",
+    "name": "BidAllocated",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "allocator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "previousNode",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newNode",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "newNodeStakeWeight",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "BidCancelled",
     "inputs": [
       {
@@ -593,6 +1305,43 @@
       },
       {
         "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "BidFeeConfigured",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "baseFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "priorityFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "protocolFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "nodeFee",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -652,6 +1401,49 @@
   },
   {
     "type": "event",
+    "name": "FeesSettled",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "client",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "protocolVault",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "protocolFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "nodeFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ManualUpdateSubmitted",
     "inputs": [
       {
@@ -689,6 +1481,88 @@
   },
   {
     "type": "event",
+    "name": "MinimumAttestationAgeUpdated",
+    "inputs": [
+      {
+        "name": "oldMinimum",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "newMinimum",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NodeActiveUpdated",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NodeMetadataUpdated",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "oldMetadataHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newMetadataHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NodeRegistered",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "metadataHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferred",
     "inputs": [
       {
@@ -702,6 +1576,112 @@
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ProtocolVaultUpdated",
+    "inputs": [
+      {
+        "name": "oldVault",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newVault",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "StakeDelegated",
+    "inputs": [
+      {
+        "name": "delegator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "StakeWeightUpdated",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "selfStake",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "delegatedStake",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "stakeWeight",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalStakeWeight",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "StakeWithdrawn",
+    "inputs": [
+      {
+        "name": "delegator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "node",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -727,6 +1707,11 @@
   },
   {
     "type": "error",
+    "name": "AmountIsZero",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "AmountTooLow",
     "inputs": [
       {
@@ -743,6 +1728,53 @@
   },
   {
     "type": "error",
+    "name": "AttestationExpired",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "requestTimestamp",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "currentTimestamp",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "maxAge",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "AttestationWindowTooShort",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "providedMaxAge",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "minimumMaxAge",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "AutoFlowFulfillerMismatch",
     "inputs": [
       {
@@ -752,6 +1784,27 @@
       },
       {
         "name": "caller",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "BidAllocatedToDifferentNode",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "allocatedNode",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "fulfiller",
         "type": "address",
         "internalType": "address"
       }
@@ -775,6 +1828,27 @@
   },
   {
     "type": "error",
+    "name": "BidInputDataMismatch",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "expectedHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "providedHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "BidNotOpen",
     "inputs": [
       {
@@ -783,6 +1857,69 @@
         "internalType": "uint256"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "BidResponseIdMismatch",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "expectedResponseId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "providedResponseId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ClientAlreadyFulfilled",
+    "inputs": [
+      {
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InsufficientStake",
+    "inputs": [
+      {
+        "name": "staker",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "available",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "requested",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidFulfillmentMarker",
+    "inputs": []
   },
   {
     "type": "error",
@@ -808,6 +1945,55 @@
   },
   {
     "type": "error",
+    "name": "NodeAlreadyRegistered",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NodeNotActive",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NodeNotRegistered",
+    "inputs": [
+      {
+        "name": "node",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NotBidAllocator",
+    "inputs": [
+      {
+        "name": "bidId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "caller",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "NotBidRequester",
     "inputs": [
       {
@@ -817,6 +2003,17 @@
       },
       {
         "name": "caller",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "OracleCallbackFailed",
+    "inputs": [
+      {
+        "name": "client",
         "type": "address",
         "internalType": "address"
       }
@@ -884,17 +2081,12 @@
   },
   {
     "type": "error",
-    "name": "UpdateExpired",
+    "name": "UnfulfilledResult",
     "inputs": [
       {
-        "name": "expiry",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "currentTimestamp",
-        "type": "uint64",
-        "internalType": "uint64"
+        "name": "client",
+        "type": "address",
+        "internalType": "address"
       }
     ]
   },

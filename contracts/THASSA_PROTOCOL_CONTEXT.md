@@ -2,6 +2,47 @@
 
 This document captures the currently agreed implementation context for onchain work.
 
+## Platform Pivot (2026-07): Proof-of-Authority + Prediction Markets
+
+Thassa has pivoted from a zkTLS/Noir oracle protocol to a platform (see `docs/PLATFORM_SPEC.md`,
+the binding spec). Summary of the onchain impact:
+
+- **`ThassaPoAVerifier` is now the canonical hub verifier module.** It keeps the exact
+  `ThassaSignatureVerifier` semantics (proof scheme `1`, EIP-191 `personal_sign` over the hub
+  `ProofUpdateV2` digest, 32-byte fulfilled marker, recovered signer must equal
+  `update.fulfiller`) but replaces the single immutable admin signer with an **owner-managed
+  signer set** (`addSigner`/`removeSigner`/`isSigner`/`signerCount`, `SignerAdded`/`SignerRemoved`
+  events). Deploy scripts wire it as the hub `verifierModule`. `ThassaSignatureVerifier` remains
+  for compatibility and tests.
+- **The zk paths are legacy.** `ThassaSP1Verifier`, `ThassaNoirVerifier`, and `rust_node/` are
+  retained as experimental artifacts and are no longer the target trust anchor. The settlement
+  trust anchor is the PoA node set signing response blobs.
+- **`ThassaMarkets` (`src/markets/ThassaMarkets.sol`, interface
+  `interfaces/IThassaMarkets.sol`)** is the new prediction-market contract. One contract holds
+  all markets; it extends `ThassaOracle` and is the oracle client for every market. Binary
+  YES/NO cent-priced order book (price 1..99, $1 = 10^decimals payout per share, uint128
+  price-level bitmaps + packed FIFO order queues, maker-price execution with price-time
+  priority), internal free-balance ledger with pull payments, EIP-712 signed orders funded by
+  EIP-3009 `receiveWithAuthorization` for the gasless relayer path (the auth's nonce is the
+  order's EIP-712 digest, binding payment and order in one signature; opening orders for
+  `createMarket` are signed with `marketId = 0`), Kalshi-style taker fee
+  `ceil(takerFeeBps x shares x p x (100-p) x unit / 1e8)` split creator/affiliate/protocol.
+  Settlement: `settleMarket` (or `settleMarketWithAuth`) pulls the $0.05 fee and places a hub
+  bid with `inputData = abi.encode(marketId, settlementQuery)`; the PoA node answers with
+  callback `abi.encode(marketId, settled, direction)` routed through
+  `ThassaHub.submitAutoUpdate` -> `updateOracle`. `MockUSD` (6 decimals + EIP-3009) is the dev
+  payment token deployed by `script/DeployThassa.s.sol`.
+- **Node resync**: the Go node (`node/`) signs the current `ProofUpdateV2` payload
+  (client, callbackHash, inputDataHash, responseId, queryHash, shapeHash, modelHash,
+  clientVersion, requestTimestamp, fulfiller — no expiry/nonce), recovers bid `inputData`
+  preimages (client `bidInputData` view or bid tx calldata), and resolves structured settlement
+  queries against the authoritative-source registry (spec section 6.5b) with node-side fetching
+  and evidence-only LLM adjudication.
+
+The remainder of this document describes the original v0 oracle protocol context and remains
+accurate for the hub/oracle core (the envelope shown below predates `ProofUpdateV2`'s
+`inputData`/`responseId` fields; see `interfaces/IThassaHub.sol` for the current struct).
+
 ## Goal
 
 Enable any client contract to consume offchain oracle updates through a `ThassaOracle` extension and a shared `ThassaHub` router.
@@ -59,11 +100,12 @@ Rationale:
    - proof validity
    - request integrity (client/version/query/shape/model binding)
    - freshness/expiry/replay constraints
-5. Hub calls client `updateOracle(callbackData)` in `try/catch`.
-6. Regardless of callback success, settlement completes:
+5. Hub calls client `updateOracle(callbackData)`.
+6. Settlement only completes if the client callback succeeds:
    - protocol flat fee collected
    - node payout (if applicable in manual path)
    - request marked finalized (no replay)
+7. If the callback reverts, the transaction reverts and payout/bid finalization do not complete.
 
 ## Flow B: Auto Update (Bid + Fulfillment)
 
@@ -72,8 +114,8 @@ Rationale:
 3. Reservation window is short (current target from latest discussion: 2 minutes).
 4. Node produces update offchain and submits via `updateAndFulfillBid`.
 5. Hub runs the same validation path as manual update.
-6. Hub callback uses `try/catch`; settlement still occurs either way.
-7. On successful proof+shape validation:
+6. Hub callback must succeed before settlement.
+7. On successful proof+shape validation and callback execution:
    - protocol flat fee taken from bid amount
    - node receives payout
    - collateral released
@@ -86,9 +128,9 @@ Rationale:
 - Bid resolution depends only on:
   - proof validity
   - requested shape correctness / integrity checks
-- Client callback revert does not block settlement.
-- Hub-level validation must be sufficient to prevent malformed payload payouts.
-- Callback should be isolated in `try/catch` to avoid DoS on settlement path.
+- Client callback revert blocks settlement and bid finalization.
+- Hub-level validation plus callback success must be sufficient to prevent malformed payload payouts.
+- Client callback code should stay small and deterministic so valid updates are not accidentally made unfulfillable.
 
 ## Client Contract Requirements
 
@@ -122,6 +164,6 @@ From the provided board:
 3. Implement manual path end-to-end with replay protection and settlement invariants.
 4. Implement bid lifecycle state machine and `updateAndFulfillBid`.
 5. Add tests focused on:
-   - payout always settles despite callback revert
+   - payout never settles when callback reverts
    - proof/shape-only resolution
    - reservation expiry/collateral behavior

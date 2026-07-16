@@ -123,6 +123,21 @@ pub fn canonical_shape(fields: &[FieldSpec]) -> Result<String> {
     Ok(serde_json::to_string(&pairs)?)
 }
 
+pub fn render_expected_shape_dsl(fields: &[FieldSpec]) -> Result<String> {
+    validate_fields(fields)?;
+    let mut out = String::from("tuple(");
+    for (idx, field) in fields.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push_str(&field.name);
+        out.push(':');
+        out.push_str(&field.solidity_type);
+    }
+    out.push(')');
+    Ok(out)
+}
+
 fn infer_json_type(field: &FieldSpec) -> Result<String> {
     if let Some(json_type) = &field.json_type {
         return Ok(json_type.clone());
@@ -131,15 +146,28 @@ fn infer_json_type(field: &FieldSpec) -> Result<String> {
     let sol_type = field.solidity_type.trim().to_lowercase();
     if matches!(
         sol_type.as_str(),
-        "string" | "address" | "bytes" | "bytes32"
-    ) || sol_type.starts_with("bytes")
-    {
+        "string" | "address" | "bytes"
+    ) {
+        return Ok("string".to_string());
+    }
+    if let Some(width) = sol_type.strip_prefix("bytes") {
+        let width = width
+            .parse::<usize>()
+            .map_err(|_| anyhow!("invalid fixed bytes type: {}", field.solidity_type))?;
+        if !(1..=32).contains(&width) {
+            return Err(anyhow!("fixed bytes width must be 1..32: {}", field.solidity_type));
+        }
         return Ok("string".to_string());
     }
     if sol_type == "bool" {
         return Ok("boolean".to_string());
     }
-    if sol_type.starts_with("uint") || sol_type.starts_with("int") {
+    if let Some(width) = sol_type.strip_prefix("uint") {
+        validate_integer_width(width, &field.solidity_type)?;
+        return Ok("integer".to_string());
+    }
+    if let Some(width) = sol_type.strip_prefix("int") {
+        validate_integer_width(width, &field.solidity_type)?;
         return Ok("integer".to_string());
     }
 
@@ -147,6 +175,18 @@ fn infer_json_type(field: &FieldSpec) -> Result<String> {
         "unsupported solidity type for shape inference: {}",
         field.solidity_type
     ))
+}
+
+fn validate_integer_width(width: &str, raw_type: &str) -> Result<()> {
+    let width = width
+        .parse::<usize>()
+        .map_err(|_| anyhow!("integer type must include an explicit width: {raw_type}"))?;
+    if width < 8 || width > 128 || width % 8 != 0 {
+        return Err(anyhow!(
+            "integer width must be 8..128 and a multiple of 8 for Noir support: {raw_type}"
+        ));
+    }
+    Ok(())
 }
 
 fn compact_whitespace(input: &str) -> String {

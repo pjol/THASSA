@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+
+# Boot script state (contains private keys / API secrets)
+.env.boot
+
+# Runtime logs from boot.sh
+logs/
+
+# Editor
+.vscode/
+.idea/

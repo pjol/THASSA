@@ -22,6 +22,19 @@
   },
   {
     "type": "function",
+    "name": "DEFAULT_MAX_ATTESTATION_AGE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "clientVersion",
     "inputs": [],
     "outputs": [
@@ -115,6 +128,19 @@
             "internalType": "string"
           }
         ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "maxAttestationAge",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"

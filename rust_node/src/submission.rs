@@ -50,6 +50,55 @@ impl SubmissionService {
         &self.chain
     }
 
+    pub async fn ensure_noir_verifier_ready(&self, expected_attestor: Address) -> Result<()> {
+        let verifier_module = self
+            .chain
+            .read_verifier_module()
+            .await
+            .context("read hub verifierModule")?;
+        let info = self
+            .chain
+            .read_noir_verifier_module_info(verifier_module)
+            .await
+            .with_context(|| {
+                format!(
+                    "hub verifierModule {} is not a complete ThassaNoirVerifier module",
+                    verifier_module
+                )
+            })?;
+
+        if info.proof_scheme != crate::noir::PROOF_SCHEME_NOIR as u32 {
+            return Err(anyhow!(
+                "hub verifierModule {} reports Noir proof scheme {}, expected {}",
+                verifier_module,
+                info.proof_scheme,
+                crate::noir::PROOF_SCHEME_NOIR
+            ));
+        }
+        if info.noir_verifier == Address::zero() {
+            return Err(anyhow!(
+                "hub verifierModule {} has zero noirVerifier address",
+                verifier_module
+            ));
+        }
+        if info.expected_attestor != expected_attestor {
+            return Err(anyhow!(
+                "hub verifierModule {} expected attestor {}, but node is configured for {}",
+                verifier_module,
+                info.expected_attestor,
+                expected_attestor
+            ));
+        }
+
+        info!(
+            verifier_module = %verifier_module,
+            noir_verifier = %info.noir_verifier,
+            expected_attestor = %info.expected_attestor,
+            "Noir on-chain verifier gate passed"
+        );
+        Ok(())
+    }
+
     pub async fn compute_update_digest(
         &self,
         update: &PreparedUpdate,
@@ -240,25 +289,25 @@ fn prepared_update_tuple(
 ) -> (
     Address,
     Bytes,
+    Bytes,
+    H256,
     H256,
     H256,
     H256,
     u64,
     u64,
-    u64,
-    U256,
     Address,
 ) {
     (
         update.client,
         Bytes::from(update.callback_data.clone()),
+        Bytes::from(update.input_data.clone()),
+        update.response_id,
         update.query_hash,
         update.shape_hash,
         update.model_hash,
         update.client_version,
         update.request_timestamp,
-        update.expiry,
-        update.nonce,
         update.fulfiller,
     )
 }

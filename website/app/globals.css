@@ -1,0 +1,333 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ════════════════════════════════════════════════════════════════
+   Thassa design system.
+   Brand blue #307CDE constant across themes. Light mode: white bg,
+   near-black #0A0A0A text. Dark mode INVERTS black↔white; blue stays.
+   YES #12B76A · NO #F04438 · SETTLING amber #F59E0B.
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg: 255 255 255;
+  --fg: 10 10 10;
+  --muted: 82 88 99;
+  --faint: 145 152 164;
+  --card: 250 250 251;
+  --edge: 10 10 10; /* used at low alpha for hairlines */
+  --shadow: 16 42 84;
+  --header-h: 72px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dark {
+  --bg: 10 10 10;
+  --fg: 255 255 255;
+  --muted: 168 174 185;
+  --faint: 110 116 128;
+  --card: 20 21 24;
+  --edge: 255 255 255;
+  --shadow: 0 0 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+  min-width: 320px;
+  overflow-x: clip;
+}
+
+::selection {
+  background: rgba(48, 124, 222, 0.28);
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid #307cde;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ═════════════ Landing scroll-snap (ASSEMBLY-style) ═════════════
+   Imitates ../ASSEMBLY/webpage: mandatory y snap on the root
+   scroller, each full-viewport section snapping flush to the top,
+   with scroll-snap-stop: always so a gesture commits to exactly the
+   adjacent view — momentum can neither skim past a section nor rest
+   between frames. Oversized sections still scroll freely inside.
+   Snapping is scoped to the landing page: <SnapRoot /> stamps
+   data-snap on <html> while the landing page is mounted.          */
+html[data-snap] {
+  scroll-snap-type: y mandatory;
+}
+html[data-snap] .snap-section {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  scroll-margin-top: 0;
+}
+html[data-snap] .snap-end {
+  scroll-snap-align: end;
+  scroll-snap-stop: always;
+}
+.snap-section {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+  position: relative;
+  overflow: clip;
+  padding-top: calc(var(--header-h) + 40px);
+  padding-bottom: 48px;
+}
+@media (max-height: 760px) {
+  .snap-section {
+    padding-top: calc(var(--header-h) + 20px);
+    padding-bottom: 28px;
+  }
+}
+
+/* ═════════════ Reveal system (IntersectionObserver) ═════════════
+   .fx rise+fade · .fx-scale rise+scale · .fx-d1..4 stagger.
+   <ScrollFX /> toggles .in when the element enters the viewport.  */
+.fx,
+.fx-scale {
+  opacity: 0;
+  transform: translateY(42px);
+  transition:
+    opacity 0.8s var(--ease),
+    transform 0.8s var(--ease);
+}
+.fx-scale {
+  transform: translateY(34px) scale(0.95);
+}
+.fx.in,
+.fx-scale.in {
+  opacity: 1;
+  transform: none;
+}
+.fx-d1 { transition-delay: 0.08s; }
+.fx-d2 { transition-delay: 0.16s; }
+.fx-d3 { transition-delay: 0.24s; }
+.fx-d4 { transition-delay: 0.32s; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+.anim-rise { animation: rise 0.9s var(--ease) both; }
+.anim-rise-1 { animation: rise 0.9s 0.12s var(--ease) both; }
+.anim-rise-2 { animation: rise 0.9s 0.24s var(--ease) both; }
+.anim-rise-3 { animation: rise 0.9s 0.36s var(--ease) both; }
+.anim-rise-4 { animation: rise 0.9s 0.48s var(--ease) both; }
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.anim-float { animation: floaty 7s ease-in-out infinite; }
+
+@keyframes aurora {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to { transform: translate3d(2%, 2.5%, 0) scale(1.06); }
+}
+.anim-aurora { animation: aurora 14s ease-in-out infinite alternate; }
+
+@keyframes pulse-dot {
+  0% { box-shadow: 0 0 0 0 rgba(48, 124, 222, 0.5); }
+  70% { box-shadow: 0 0 0 12px rgba(48, 124, 222, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(48, 124, 222, 0); }
+}
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #307cde;
+  animation: pulse-dot 2.4s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.001s !important;
+  }
+  html { scroll-behavior: auto; }
+  .fx, .fx-scale { opacity: 1 !important; transform: none !important; }
+}
+
+/* ───────────────────────── Utilities ───────────────────────── */
+.container-page {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.hairline { border-color: rgb(var(--edge) / 0.1); }
+
+.text-gradient-brand {
+  background: linear-gradient(120deg, #307cde, #6fb0ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-grid-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgb(var(--edge) / 0.05) 1px, transparent 1px) 0 0 / 100% 56px,
+    linear-gradient(90deg, rgb(var(--edge) / 0.05) 1px, transparent 1px) 0 0 / 56px 100%;
+  -webkit-mask-image: linear-gradient(#000 50%, transparent 96%);
+  mask-image: linear-gradient(#000 50%, transparent 96%);
+}
+
+.glass {
+  background: rgb(var(--bg) / 0.66);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  backdrop-filter: blur(18px) saturate(1.35);
+}
+
+/* ───────────────────────── Docs prose ───────────────────────── */
+.docs-prose {
+  font-size: 15.5px;
+  line-height: 1.75;
+  color: rgb(var(--fg) / 0.92);
+}
+.docs-prose > * + * { margin-top: 1em; }
+.docs-prose h1 {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin-top: 0;
+}
+.docs-prose h2 {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  margin-top: 2.4em;
+  padding-top: 0.6em;
+  border-top: 1px solid rgb(var(--edge) / 0.08);
+  scroll-margin-top: calc(var(--header-h) + 24px);
+}
+.docs-prose h3 {
+  font-size: 17px;
+  font-weight: 650;
+  margin-top: 1.8em;
+  scroll-margin-top: calc(var(--header-h) + 24px);
+}
+.docs-prose p { color: rgb(var(--muted)); }
+.docs-prose li { color: rgb(var(--muted)); }
+.docs-prose strong { color: rgb(var(--fg)); font-weight: 600; }
+.docs-prose a {
+  color: #307cde;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(48, 124, 222, 0.35);
+}
+.docs-prose a:hover { border-bottom-color: #307cde; }
+.docs-prose ul {
+  list-style: none;
+  padding-left: 2px;
+  display: grid;
+  gap: 8px;
+}
+.docs-prose ul > li {
+  padding-left: 20px;
+  position: relative;
+}
+.docs-prose ul > li::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  color: #307cde;
+}
+.docs-prose ol {
+  list-style: decimal;
+  padding-left: 24px;
+  display: grid;
+  gap: 8px;
+}
+.docs-prose code:not(pre code) {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.86em;
+  background: rgb(var(--edge) / 0.07);
+  border: 1px solid rgb(var(--edge) / 0.08);
+  border-radius: 6px;
+  padding: 1.5px 5px;
+  color: rgb(var(--fg));
+  white-space: nowrap;
+}
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.docs-prose table code { white-space: nowrap; }
+.docs-prose th {
+  text-align: left;
+  font-weight: 600;
+  color: rgb(var(--fg));
+  padding: 8px 12px;
+  border-bottom: 1px solid rgb(var(--edge) / 0.15);
+  white-space: nowrap;
+}
+.docs-prose td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgb(var(--edge) / 0.07);
+  color: rgb(var(--muted));
+  vertical-align: top;
+}
+.table-scroll { overflow-x: auto; }
+
+/* Code blocks */
+.code-block {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid rgb(var(--edge) / 0.1);
+  background: #0d1117;
+  overflow: hidden;
+}
+.code-block pre {
+  overflow-x: auto;
+  padding: 16px 18px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.8px;
+  line-height: 1.65;
+  color: #e6edf3;
+}
+.code-block .code-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(230, 237, 243, 0.55);
+  border-bottom: 1px solid rgba(230, 237, 243, 0.09);
+  background: rgba(230, 237, 243, 0.03);
+}
+
+/* Scrollbars for code + rails */
+.code-block pre::-webkit-scrollbar,
+.table-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.code-block pre::-webkit-scrollbar-thumb,
+.table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(48, 124, 222, 0.5);
+  border-radius: 9999px;
+}

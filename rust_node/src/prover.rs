@@ -13,15 +13,24 @@ use tracing::info;
 
 use crate::{
     config::Config,
+    noir::{GeneratedNoirProof, NoirProverService, PreparedNoirProof},
     types::{ProofArtifact, ProofJobStatus, ProofJobSummary, ProofProgramInput},
 };
 
 #[derive(Clone)]
 pub struct ProverService {
-    mode: String,
-    elf: Vec<u8>,
-    timeout: Duration,
-    poll_interval: Duration,
+    backend: ProofBackend,
+}
+
+#[derive(Clone)]
+enum ProofBackend {
+    Noir(NoirProverService),
+    Sp1(Sp1ProverService),
+}
+
+pub struct ProofRequest {
+    pub sp1_input: Option<ProofProgramInput>,
+    pub noir_input: Option<PreparedNoirProof>,
 }
 
 pub struct GeneratedProof {
@@ -29,8 +38,88 @@ pub struct GeneratedProof {
     pub summary: ProofJobSummary,
 }
 
+#[derive(Clone)]
+struct Sp1ProverService {
+    mode: String,
+    elf: Vec<u8>,
+    timeout: Duration,
+    poll_interval: Duration,
+}
+
 impl ProverService {
     pub fn from_config(config: &Config) -> Result<Self> {
+        let backend = match config.proof_backend.trim().to_lowercase().as_str() {
+            "noir" => {
+                if config.auto_fulfill && !config.noir_onchain_submission_enabled {
+                    return Err(anyhow!(
+                        "AUTO_FULFILL_BIDS=true would submit Noir proofs on-chain, but NOIR_ONCHAIN_SUBMISSION_ENABLED is false; deploy/verify the Noir verifier module and set NOIR_ONCHAIN_SUBMISSION_ENABLED=true, or disable AUTO_FULFILL_BIDS"
+                    ));
+                }
+
+                ProofBackend::Noir(NoirProverService::new(
+                    &config.noir_project_dir,
+                    config.noir_package_name.clone(),
+                    config.noir_nargo_bin.clone(),
+                    config.noir_bb_bin.clone(),
+                    config.noir_prover_name.clone(),
+                    config.noir_witness_name.clone(),
+                    config.proof_timeout,
+                )?)
+            }
+            "sp1" | "succinct" => ProofBackend::Sp1(Sp1ProverService::from_config(config)?),
+            other => {
+                return Err(anyhow!(
+                    "unsupported PROOF_BACKEND {other:?}; expected \"noir\" or \"sp1\""
+                ))
+            }
+        };
+
+        Ok(Self { backend })
+    }
+
+    pub fn scheme(&self) -> u8 {
+        match &self.backend {
+            ProofBackend::Noir(_) => crate::noir::PROOF_SCHEME_NOIR,
+            ProofBackend::Sp1(_) => 2,
+        }
+    }
+
+    pub fn backend_label(&self) -> &'static str {
+        match &self.backend {
+            ProofBackend::Noir(_) => "Noir",
+            ProofBackend::Sp1(_) => "SP1",
+        }
+    }
+
+    pub async fn prove(
+        &self,
+        bid_id: Option<u64>,
+        client: &str,
+        request: &ProofRequest,
+    ) -> Result<GeneratedProof> {
+        match &self.backend {
+            ProofBackend::Noir(service) => {
+                let input = request
+                    .noir_input
+                    .as_ref()
+                    .context("missing Noir proof input")?;
+                let GeneratedNoirProof { artifact, summary } =
+                    service.prove(bid_id, client, input).await?;
+                Ok(GeneratedProof { artifact, summary })
+            }
+            ProofBackend::Sp1(service) => {
+                let input = request
+                    .sp1_input
+                    .as_ref()
+                    .context("missing SP1 proof input")?;
+                service.prove(bid_id, client, input).await
+            }
+        }
+    }
+}
+
+impl Sp1ProverService {
+    fn from_config(config: &Config) -> Result<Self> {
         let elf_path = resolve_elf_path(config)
             .context("SP1_ELF_PATH is required or the proof program ELF must exist in a standard build location")?;
         let elf = fs::read(elf_path).with_context(|| format!("read SP1 ELF {elf_path}"))?;
@@ -43,7 +132,7 @@ impl ProverService {
         })
     }
 
-    pub async fn prove(
+    async fn prove(
         &self,
         bid_id: Option<u64>,
         client: &str,
@@ -113,7 +202,7 @@ impl ProverService {
         summary.status = ProofJobStatus::PendingSubmission;
 
         Ok(GeneratedProof {
-            artifact: encode_artifact(vk, proof, "network")?,
+            artifact: encode_sp1_artifact(vk, proof, "network")?,
             summary,
         })
     }
@@ -135,7 +224,7 @@ impl ProverService {
         prover.verify(&proof, &vk).context("verify local proof")?;
 
         Ok(GeneratedProof {
-            artifact: encode_artifact(vk, proof, "local")?,
+            artifact: encode_sp1_artifact(vk, proof, "local")?,
             summary: ProofJobSummary {
                 job_id: format!("local-{}", bid_id.unwrap_or_default()),
                 bid_id,
@@ -168,7 +257,7 @@ fn resolve_elf_path(config: &Config) -> Option<&str> {
         .find(|candidate| std::path::Path::new(candidate).exists())
 }
 
-fn encode_artifact(
+fn encode_sp1_artifact(
     vk: SP1VerifyingKey,
     proof: SP1ProofWithPublicValues,
     proof_mode: &str,

@@ -14,19 +14,19 @@ import (
 )
 
 var updateTypeHash = crypto.Keccak256Hash(
-	[]byte("ProofUpdate(address hub,uint256 chainId,bytes32 payloadHash,uint256 bidId,bool autoFlow)"),
+	[]byte("ProofUpdateV2(address hub,uint256 chainId,bytes32 payloadHash,uint256 bidId,bool autoFlow)"),
 )
 
 type UpdatePayload struct {
 	Client           common.Address
 	CallbackData     []byte
+	InputData        []byte
+	ResponseID       common.Hash
 	QueryHash        common.Hash
 	ShapeHash        common.Hash
 	ModelHash        common.Hash
 	ClientVersion    uint64
 	RequestTimestamp uint64
-	Expiry           uint64
-	Nonce            *big.Int
 	Fulfiller        common.Address
 }
 
@@ -98,15 +98,16 @@ func (s *Signer) SignUpdate(request SignRequest) (SignResult, error) {
 	}, nil
 }
 
+// ComputeDigest mirrors ThassaHub._computeUpdateDigest for the ProofUpdateV2 envelope:
+// payloadHash = keccak(abi.encode(client, keccak(callbackData), keccak(inputData), responseId,
+// queryHash, shapeHash, modelHash, clientVersion, requestTimestamp, fulfiller)) and
+// digest = keccak(abi.encode(typehash, hub, chainId, payloadHash, bidId, autoFlow)).
 func ComputeDigest(request SignRequest) (common.Hash, error) {
 	if request.ChainID == nil {
 		return common.Hash{}, fmt.Errorf("chainID is required")
 	}
 	if request.BidID == nil {
 		return common.Hash{}, fmt.Errorf("bidID is required")
-	}
-	if request.Payload.Nonce == nil {
-		return common.Hash{}, fmt.Errorf("payload nonce is required")
 	}
 
 	payloadArgs, err := newArguments(
@@ -115,10 +116,10 @@ func ComputeDigest(request SignRequest) (common.Hash, error) {
 		"bytes32",
 		"bytes32",
 		"bytes32",
+		"bytes32",
+		"bytes32",
 		"uint64",
 		"uint64",
-		"uint64",
-		"uint256",
 		"address",
 	)
 	if err != nil {
@@ -126,16 +127,17 @@ func ComputeDigest(request SignRequest) (common.Hash, error) {
 	}
 
 	callbackHash := crypto.Keccak256Hash(request.Payload.CallbackData)
+	inputDataHash := crypto.Keccak256Hash(request.Payload.InputData)
 	packedPayload, err := payloadArgs.Pack(
 		request.Payload.Client,
 		callbackHash,
+		inputDataHash,
+		request.Payload.ResponseID,
 		request.Payload.QueryHash,
 		request.Payload.ShapeHash,
 		request.Payload.ModelHash,
 		request.Payload.ClientVersion,
 		request.Payload.RequestTimestamp,
-		request.Payload.Expiry,
-		request.Payload.Nonce,
 		request.Payload.Fulfiller,
 	)
 	if err != nil {

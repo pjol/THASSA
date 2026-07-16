@@ -245,11 +245,7 @@ pub struct UpdateRequest {
     #[serde(default)]
     pub submit_on_chain: Option<bool>,
     #[serde(default)]
-    pub ttl_seconds: Option<u64>,
-    #[serde(default)]
     pub request_timestamp: Option<u64>,
-    #[serde(default)]
-    pub nonce: Option<String>,
     #[serde(default)]
     pub input_data: Value,
 }
@@ -267,13 +263,13 @@ pub struct ProofEnvelopeJson {
 pub struct UpdateEnvelopeJson {
     pub client: String,
     pub callback_data: String,
+    pub input_data: String,
+    pub response_id: String,
     pub query_hash: String,
     pub shape_hash: String,
     pub model_hash: String,
     pub client_version: u64,
     pub request_timestamp: u64,
-    pub expiry: u64,
-    pub nonce: String,
     pub fulfiller: String,
 }
 
@@ -283,6 +279,7 @@ pub struct HashCommitments {
     pub query_hash: String,
     pub shape_hash: String,
     pub model_hash: String,
+    pub input_data_hash: String,
     pub request_body_hash: String,
 }
 
@@ -367,13 +364,13 @@ impl std::fmt::Display for ProofJobStatus {
 pub struct PreparedUpdate {
     pub client: Address,
     pub callback_data: Vec<u8>,
+    pub input_data: Vec<u8>,
+    pub response_id: H256,
     pub query_hash: H256,
     pub shape_hash: H256,
     pub model_hash: H256,
     pub client_version: u64,
     pub request_timestamp: u64,
-    pub expiry: u64,
-    pub nonce: U256,
     pub fulfiller: Address,
 }
 
@@ -386,6 +383,7 @@ pub struct PreparedProofEnvelope {
 
 #[derive(Clone, Debug)]
 pub struct PreparedProofCommitment {
+    pub llm_fulfilled: bool,
     pub digest: H256,
     pub bid_id: U256,
     pub auto_flow: bool,
@@ -394,9 +392,9 @@ pub struct PreparedProofCommitment {
     pub query_hash: H256,
     pub shape_hash: H256,
     pub model_hash: H256,
+    pub input_data_hash: H256,
+    pub response_id: H256,
     pub client_version: u64,
     pub request_timestamp: u64,
-    pub expiry: u64,
-    pub nonce: U256,
     pub callback_hash: H256,
 }

@@ -114,6 +114,31 @@ These are the concrete implementation and validation tasks that are still outsta
 2. Decide whether the circuit should commit full callback bytes or only `callbackHash` long term.
 3. Decide whether to keep the legacy demo node around once the Rust path is fully validated.
 4. Decide how aggressively we want to pursue a pure-Rust Primus execution path versus accepting the JS bridge for the first production rollout.
+5. Document the protocol's intended risk envelope for LLM-backed oracleization: THASSA is currently targeted at cases where instantaneous oracleization is preferable and the value gated by an update is modest. Builders should plan upgrade paths and alternate oracle integrations as locked value grows.
+6. Evaluate the economic viability of model-output cherry-picking, prompt/data poisoning, and zkTLS protocol-failure scenarios. Produce suggested value thresholds where stronger mechanisms should be added.
+7. Design a multi-lock / quorum update path where multiple independent attestations must concur before a contract value update is finalized.
+8. Add a secondary abstract oracle extension that implements the multi-attestation update policy once the quorum design is settled.
+9. Design production module-upgrade hardening for verifier/oracle modules: timelocked upgrades, pre-announcement events that integrators can monitor, emergency freezing of contract updates, and a foundation-controlled freeze path for pausing updates while suspected verifier or attestation-layer exploits are patched.
+
+### Selected tokenomics model
+
+The selected economic model is stablecoin fee collection with staking-token buybacks and staking-token payouts.
+
+Target behavior:
+
+1. Requesters pay bids, protocol fees, and node fees in a stablecoin payment token.
+2. Nodes receive their fulfillment payout in the stablecoin payment token, preserving predictable operator revenue.
+3. The hub forwards the protocol-fee share to a protocol vault.
+4. The protocol vault periodically buys the staking token using accrued stablecoin fees.
+5. The bought-back staking tokens are distributed to stakers/delegators through the staking reward system.
+
+Implementation implications:
+
+- `paymentToken` and `stakingToken` should become separate first-class assets.
+- The hub should stay focused on bid escrow, stablecoin settlement, proof verification, and protocol-fee routing.
+- Buybacks and staker reward distribution should live behind a dedicated vault/distributor rather than inside the core fulfillment path.
+- The buyback path needs explicit route allowlists, slippage limits, keeper/admin permissions, liquidity thresholds, and emergency controls.
+- Staking rewards should use claim-based accounting rather than looping over stakers during fulfillment or buyback settlement.
 
 ## High-Level Target Architecture
 
