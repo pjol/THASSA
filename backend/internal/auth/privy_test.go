@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"strings"
 	"testing"
@@ -117,20 +118,43 @@ func TestLocalVerificationRejects(t *testing.T) {
 	}
 }
 
-func TestParseVerificationKeyEscapedNewlines(t *testing.T) {
+func TestParseVerificationKeyTolerantFormats(t *testing.T) {
 	_, pubPEM := genKey(t)
-	escaped := strings.ReplaceAll(pubPEM, "\n", `\n`)
-	if _, err := parseVerificationKey(escaped); err != nil {
-		t.Fatalf("escaped-newline PEM rejected: %s", err)
+	// base64 body with the armor stripped
+	bare := pubPEM
+	bare = strings.ReplaceAll(bare, "-----BEGIN PUBLIC KEY-----", "")
+	bare = strings.ReplaceAll(bare, "-----END PUBLIC KEY-----", "")
+	bare = strings.Join(strings.Fields(bare), "")
+
+	forms := map[string]string{
+		"canonical PEM":       pubPEM,
+		"escaped-newline PEM":  strings.ReplaceAll(pubPEM, "\n", `\n`),
+		"single-line PEM":      "-----BEGIN PUBLIC KEY-----" + bare + "-----END PUBLIC KEY-----",
+		"bare base64 body":     bare,
+		"bare base64 w/ space": bare[:20] + " " + bare[20:],
+	}
+	for name, form := range forms {
+		if _, err := parseVerificationKey(form); err != nil {
+			t.Errorf("%s: unexpectedly rejected: %s", name, err)
+		}
 	}
 }
 
 func TestParseVerificationKeyRejectsBadInput(t *testing.T) {
-	if _, err := parseVerificationKey("-----BEGIN PUBLIC KEY-----\ngarbage\n-----END PUBLIC KEY-----"); err == nil {
-		t.Error("expected error for garbage PEM body")
+	// The app secret is not base64 SPKI — this is the common misconfiguration
+	// and must fail with a clear error, not be silently accepted.
+	for name, bad := range map[string]string{
+		"empty":              "",
+		"app secret-ish":     "3xAmpL3-pr1vy-app-s3cr3t-not-a-key",
+		"armor + garbage":    "-----BEGIN PUBLIC KEY-----\ngarbage!!!\n-----END PUBLIC KEY-----",
+		"valid b64 not SPKI": base64.StdEncoding.EncodeToString([]byte("hello world not a key")),
+	} {
+		if _, err := parseVerificationKey(bad); err == nil {
+			t.Errorf("%s: expected rejection, got success", name)
+		}
 	}
-	if _, err := NewPrivyVerifier(testAppID, "not pem at all"); err == nil {
-		t.Error("expected error for non-PEM key")
+	if _, err := NewPrivyVerifier(testAppID, "not a key at all"); err == nil {
+		t.Error("expected NewPrivyVerifier to reject a bad key")
 	}
 }
 

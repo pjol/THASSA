@@ -75,9 +75,13 @@ At a high level:
 One command brings up the entire platform against a local fork of Tempo:
 
 ```bash
-cp .env.boot.example .env.boot   # set TEMPO_FORK_RPC_URL, PRIVY_APP_ID, OPENAI_API_KEY, etc.
-./boot.sh
+./boot.sh                # boots everything; auto-creates .env.boot on first run
+./boot.sh --no-mobile    # skip Expo (also: --no-web, --no-node, --no-backend)
 ```
+
+Only `PRIVY_APP_ID` and `OPENAI_API_KEY` need to be set by hand in `.env.boot` — every other
+setting has a working dev default (set `TEMPO_FORK_RPC_URL` to fork Tempo instead of running a
+plain local chain).
 
 `boot.sh` starts postgres + minio, launches anvil (forking Tempo when `TEMPO_FORK_RPC_URL` is
 set), **prank-funds** every configured address (`FUND_ADDRESSES` + the deployer/node/relayer/dev

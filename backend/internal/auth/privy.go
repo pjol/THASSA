@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -59,17 +58,32 @@ func NewPrivyVerifier(appID, verificationKeyPEM string) (*PrivyVerifier, error) 
 	return v, nil
 }
 
-// parseVerificationKey decodes a PEM (SPKI) ES256 public key, tolerating
-// env-style literal "\n" escapes.
-func parseVerificationKey(pemStr string) (*ecdsa.PublicKey, error) {
-	pemStr = strings.ReplaceAll(pemStr, `\n`, "\n")
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return nil, fmt.Errorf("not valid PEM")
+// parseVerificationKey decodes an ES256 (P-256) SPKI public key from the Privy
+// dashboard "Verification key". It is tolerant of the ways this value gets
+// mangled in a .env file: literal "\n" escapes, a single-line PEM whose body
+// newlines were lost, or a bare base64 SPKI body with the -----BEGIN/END-----
+// armor stripped. It reconstructs canonical PEM from whatever it's given.
+func parseVerificationKey(s string) (*ecdsa.PublicKey, error) {
+	s = strings.TrimSpace(strings.ReplaceAll(s, `\n`, "\n"))
+
+	// Extract the base64 body: drop the armor lines and all whitespace.
+	body := s
+	body = strings.ReplaceAll(body, "-----BEGIN PUBLIC KEY-----", "")
+	body = strings.ReplaceAll(body, "-----END PUBLIC KEY-----", "")
+	body = strings.Join(strings.Fields(body), "") // remove all whitespace/newlines
+	if body == "" {
+		return nil, fmt.Errorf("empty verification key")
 	}
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+
+	der, err := base64.StdEncoding.DecodeString(body)
 	if err != nil {
-		return nil, fmt.Errorf("parse public key: %w", err)
+		return nil, fmt.Errorf("not a valid SPKI public key — expected the PEM " +
+			"\"Verification key\" from the Privy dashboard, not the app secret")
+	}
+	pub, err := x509.ParsePKIXPublicKey(der)
+	if err != nil {
+		return nil, fmt.Errorf("parse public key: %w (expected the Privy "+
+			"dashboard \"Verification key\", not the app secret)", err)
 	}
 	ec, ok := pub.(*ecdsa.PublicKey)
 	if !ok || ec.Curve != elliptic.P256() {
