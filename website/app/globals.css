@@ -35,6 +35,7 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: clip; /* html is the snap scroller — never scroll sideways */
 }
 
 body {
@@ -168,6 +169,16 @@ html[data-snap] .snap-end {
   margin-right: auto;
   padding-left: 24px;
   padding-right: 24px;
+  min-width: 0; /* as a grid item, allow shrink so wide children (code blocks,
+                   tables) scroll internally instead of expanding the track */
+}
+/* Grid/flex descendants that hold wide, unbreakable content (code, pre, tables)
+   must be allowed to shrink below their content's intrinsic width so their own
+   overflow-x can take over. */
+.snap-section > *,
+.snap-section pre,
+.container-page pre {
+  min-width: 0;
 }
 
 .hairline { border-color: rgb(var(--edge) / 0.1); }

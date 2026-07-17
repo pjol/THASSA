@@ -26,7 +26,7 @@ function Kicker({ index, label, className = "" }: { index: string; label: string
 function SourcePill({ name, verdict }: { name: string; verdict: "YES" | "NO" }) {
   const yes = verdict === "YES";
   return (
-    <div className="flex items-center justify-between rounded-xl border hairline bg-bg px-3.5 py-2.5">
+    <div className="flex items-center justify-between rounded-xl border hairline bg-bg text-fg px-3.5 py-2.5">
       <span className="text-[13px] font-semibold">{name}</span>
       <span className={`rounded-full px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] ${yes ? "bg-yes/10 text-yes" : "bg-no/10 text-no"}`}>
         {verdict}
@@ -374,7 +374,7 @@ export default function Home() {
                 API reference <Arrow />
               </Link>
             </div>
-            <div className="fx fx-d3 mx-auto mt-12 max-w-[560px] overflow-hidden rounded-2xl border hairline bg-[#0d1117] text-left shadow-pop">
+            <div className="fx fx-d3 mx-auto mt-12 w-full max-w-[560px] min-w-0 overflow-hidden rounded-2xl border hairline bg-[#0d1117] text-left shadow-pop">
               <div className="flex items-center gap-1.5 border-b border-white/10 px-4 py-2.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-no/70" />
                 <span className="h-2.5 w-2.5 rounded-full bg-settling/70" />

@@ -50,7 +50,7 @@ export function MarketCardMock({
 
 export function PostCardMock() {
   return (
-    <div className="w-full max-w-[360px] overflow-hidden rounded-3xl border hairline bg-bg shadow-pop">
+    <div className="w-full max-w-[360px] overflow-hidden rounded-3xl border hairline bg-bg text-fg shadow-pop">
       {/* header */}
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-brand to-brand-soft" />
@@ -114,7 +114,7 @@ export function OrderBookMock() {
     { p: 36, s: 260 },
   ];
   return (
-    <div className="w-full max-w-[380px] rounded-3xl border hairline bg-bg p-5 shadow-pop">
+    <div className="w-full max-w-[380px] rounded-3xl border hairline bg-bg text-fg p-5 shadow-pop">
       <div className="flex items-center justify-between">
         <p className="text-[13px] font-semibold">Order book</p>
         <span className="flex items-center gap-2 font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">
