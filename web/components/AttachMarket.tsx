@@ -254,7 +254,7 @@ export function AttachMarket({
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-brand">
-                <SparkleIcon size={11} /> new market — you open the book
+                <SparkleIcon size={11} /> new market. You open the book.
               </span>
             )}
           </p>

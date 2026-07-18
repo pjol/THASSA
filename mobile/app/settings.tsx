@@ -149,6 +149,25 @@ export default function Settings() {
         ))}
       </Section>
 
+      {/* Developer: API trading access. */}
+      <Section title="Developer">
+        <ToggleRow
+          title="Server-side signing"
+          subtitle="Let Thassa sign API orders with your delegated wallet. Plain API keys can then place trades without a live login."
+          value={!!me?.server_signing_enabled}
+          onChange={async (v) => {
+            setMe((m) => ({ ...m, server_signing_enabled: v }));
+            try {
+              await api.post("/v1/me/server-signing", { enabled: v });
+            } catch (e) {
+              warn();
+              setMe((m) => ({ ...m, server_signing_enabled: !v }));
+              toasts.show({ title: "Couldn't save", body: errorMessage(e), icon: "alert-circle" });
+            }
+          }}
+        />
+      </Section>
+
       {/* Admin (spec §7c.3) — only for real admins, hidden while warped. */}
       {me?.is_admin && !me?.warp?.active ? (
         <Section title="Admin">

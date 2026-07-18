@@ -57,24 +57,21 @@ export default function Home() {
                 <span className="text-gradient-brand">Settled.</span>
               </h1>
               <p className="anim-rise-2 mt-6 max-w-[500px] text-[17px] leading-relaxed text-muted">
-                Thassa is a feed where every post can carry a prediction
-                market. Back your take with a single tap — no gas fees, no
-                crypto hoops, your money stays yours — and every market
-                settles in the open, against sources everyone can see.
+                Post your predictions.
               </p>
               <div className="anim-rise-3 mt-9 flex flex-wrap gap-3.5">
                 <a href={APP_URL} className="group inline-flex items-center gap-2.5 rounded-xl bg-brand px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-12px_rgba(48,124,222,0.7)] transition hover:-translate-y-0.5 hover:bg-brand-deep">
                   Open the app <Arrow />
                 </a>
-                <Link href="/download" className="group inline-flex items-center gap-2.5 rounded-xl border hairline bg-bg/60 px-7 py-3.5 text-[15px] font-semibold transition hover:-translate-y-0.5 hover:border-brand hover:text-brand">
-                  Get the app <Arrow />
-                </Link>
+                {/* <Link href="/download" className="group inline-flex items-center gap-2.5 rounded-xl border hairline bg-bg/60 px-7 py-3.5 text-[15px] font-semibold transition hover:-translate-y-0.5 hover:border-brand hover:text-brand">
+                  Download <Arrow />
+                </Link> */}
                 <Link href="/docs" className="group inline-flex items-center gap-2.5 rounded-xl border hairline bg-bg/60 px-7 py-3.5 text-[15px] font-semibold transition hover:-translate-y-0.5 hover:border-brand hover:text-brand">
-                  Build with the API <Arrow />
+                  Docs <Arrow />
                 </Link>
               </div>
               <div className="anim-rise-4 mt-11 flex flex-wrap gap-x-7 gap-y-2 border-t border-dashed hairline pt-4 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
-                <span><b className="font-semibold text-muted">No gas fees</b> — one signature</span>
+                <span><b className="font-semibold text-muted">No gas fees</b>. One signature.</span>
                 <span><b className="font-semibold text-muted">$1</b> shares, priced in cents</span>
                 <span><b className="font-semibold text-muted">Settled</b> against public sources</span>
               </div>
@@ -98,16 +95,16 @@ export default function Home() {
                 <span className="text-gradient-brand">market</span>.
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[560px] text-[16.5px] leading-relaxed text-muted">
-                Posts, stories, reels, DMs — a social feed you already know,
-                with one twist: attach a YES/NO market to anything you share.
-                Friends take the other side straight from the post card.
-                Shares are priced in cents, pay out $1 if you&rsquo;re right, and
-                trade on a real order book.
+                A social feed with posts, stories, reels, and DMs. The twist
+                is that you can attach a YES/NO market to anything you post.
+                Friends take the other side right from the post card. Shares
+                are priced in cents, pay out $1 if you win, and trade on a
+                real order book.
               </p>
               <ul className="fx fx-d2 mt-7 grid max-w-[540px] gap-3 text-[14.5px] text-muted">
                 <li className="flex gap-3">
                   <span className="mt-0.5 text-brand">▸</span>
-                  Create a market from any post — free. A $1 opening bet gets
+                  Creating a market from a post is free. A $1 opening bet gets
                   it started.
                 </li>
                 <li className="flex gap-3">
@@ -122,7 +119,7 @@ export default function Home() {
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-0.5 text-brand">▸</span>
-                  YES at 62¢ means the crowd says 62% — price is probability.
+                  YES at 62¢ means the crowd puts the odds at 62%. Price is probability.
                 </li>
               </ul>
             </div>
@@ -160,17 +157,17 @@ export default function Home() {
                     {
                       n: "1",
                       t: "You sign once",
-                      d: "One signature approves your order and its payment together — there's nothing else to confirm.",
+                      d: "One signature approves your order and its payment together. There is nothing else to confirm.",
                     },
                     {
                       n: "2",
                       t: "Thassa submits it",
-                      d: "Your order is bundled with others and placed onchain for you. Thassa pays the gas — you never do.",
+                      d: "Your order is bundled with others and placed onchain for you. Thassa pays the gas, not you.",
                     },
                     {
                       n: "3",
                       t: "The book matches",
-                      d: "You fill at the best available price — never worse than your limit. Whatever doesn't fill waits on the book.",
+                      d: "You fill at the best available price, never worse than your limit. Whatever doesn't fill waits on the book.",
                     },
                   ].map((s, i) => (
                     <div key={s.n} className="relative flex gap-4 pb-6 last:pb-0">
@@ -197,13 +194,13 @@ export default function Home() {
                 One signature. <span className="text-gradient-brand">Zero gas.</span>
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[540px] text-[16.5px] leading-relaxed text-muted">
-                No deposit step, no gas prompts, nothing to bridge. Your money
-                moves straight from your own wallet into the market when you
-                trade — Thassa never holds your keys or your funds. One
-                signature approves the order and its payment together, so
-                there&rsquo;s exactly one thing to confirm.{" "}
+                There is no deposit step and nothing to bridge. When you trade,
+                money moves straight from your wallet into the market. Thassa
+                never holds your keys or your funds. One signature approves
+                the order and its payment together, so there is exactly one
+                thing to confirm.{" "}
                 <Link href="/docs/protocol/gasless" className="font-medium text-brand hover:underline">
-                  Curious how it works? Read the docs.
+                  Want the details? Read the docs.
                 </Link>
               </p>
               <div className="fx fx-d2 mt-8 grid max-w-[540px] grid-cols-3 divide-x divide-dashed hairline border-y border-dashed hairline">
@@ -235,9 +232,9 @@ export default function Home() {
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[560px] text-[16.5px] leading-relaxed text-bg/65">
                 Every market declares how it will settle before a single
-                share trades — the question, the resolution rule, and the
-                exact sources that decide it, published for anyone to
-                inspect. When it&rsquo;s time, Thassa checks those sources and
+                share trades: the question, the resolution rule, and the
+                exact sources that decide it. Anyone can inspect them. When
+                it&rsquo;s time to settle, Thassa checks those sources, and
                 nothing pays out until the result is verified onchain.
               </p>
               <ul className="fx fx-d2 mt-7 grid max-w-[560px] gap-3 text-[14.5px] text-bg/65">
@@ -246,7 +243,7 @@ export default function Home() {
                   <span>
                     <b className="font-semibold text-bg">Facts and figures settle on one named source.</b>{" "}
                     Sports on ESPN, weather on NWS/NOAA, crypto prices on
-                    Coinbase — disclosed publicly, every time.
+                    Coinbase. The source is always disclosed.
                   </span>
                 </li>
                 <li className="flex gap-3">
@@ -254,7 +251,7 @@ export default function Home() {
                   <span>
                     <b className="font-semibold text-bg">News settles by majority.</b>{" "}
                     NYT, WSJ, Reuters, AP, and BBC each give an independent
-                    verdict — and a majority must agree before the market
+                    verdict. A majority has to agree before the market
                     settles.
                   </span>
                 </li>
@@ -279,11 +276,11 @@ export default function Home() {
               </div>
               <div className="mt-4 rounded-xl border border-yes/30 bg-yes/10 px-4 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-yes">
-                  4 of 5 agree — settles YES
+                  4 of 5 agree: settles YES
                 </p>
                 <p className="mt-1 text-[12px] leading-snug text-bg/60">
-                  No majority? No settlement. The market stays SETTLING and
-                  Thassa checks again later.
+                  If there is no majority, the market stays SETTLING and Thassa
+                  checks again later.
                 </p>
               </div>
             </div>
@@ -299,16 +296,16 @@ export default function Home() {
                 Your markets <span className="text-gradient-brand">pay you</span>.
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[540px] text-[16.5px] leading-relaxed text-muted">
-                Takers pay a small fee on each trade — at most 1.75¢ per
-                share, shrinking to nearly nothing when the odds are
-                lopsided. Makers pay nothing. Of every fee collected, 10%
-                goes to the market&rsquo;s creator and 5% to the post that routed
-                the trade. Share a hot market and the flow pays you back.
+                Takers pay a small fee on each trade, at most 1.75¢ per
+                share. Makers pay nothing. Of every fee collected, 10% goes
+                to the market&rsquo;s creator and 10% to the post that routed the
+                trade. If your post sends people to a busy market, you get
+                paid for it.
               </p>
               <p className="fx fx-d2 mt-4 max-w-[540px] text-[14.5px] leading-relaxed text-muted">
-                Creating a market is free — just a $1 minimum opening bet.
-                Settlement costs a nickel. Withdrawals carry a flat $0.10 fee.
-                That&rsquo;s the whole fee schedule.
+                Creating a market is free. You just need a $1 minimum opening
+                bet. Settlement costs 5¢ and withdrawals cost a flat 10¢.
+                That is the entire fee schedule.
               </p>
             </div>
             <div className="fx-scale fx-d1 mx-auto w-full max-w-[420px]">
@@ -319,8 +316,8 @@ export default function Home() {
                 <div className="mt-5 space-y-3">
                   {[
                     { label: "Market creator", pct: 10, color: "bg-brand" },
-                    { label: "Affiliate post", pct: 5, color: "bg-yes" },
-                    { label: "Protocol", pct: 85, color: "bg-fg/70" },
+                    { label: "Affiliate post", pct: 10, color: "bg-yes" },
+                    { label: "Protocol", pct: 80, color: "bg-fg/70" },
                   ].map((r) => (
                     <div key={r.label}>
                       <div className="flex items-baseline justify-between text-[13px]">
@@ -359,10 +356,10 @@ export default function Home() {
               <span className="text-gradient-brand">API</span>.
             </h2>
             <p className="fx fx-d1 mx-auto mt-5 max-w-[560px] text-[16.5px] leading-relaxed text-muted">
-              Everything the app can do, your code can do — same accounts,
+              Everything the app can do, your code can do: same accounts,
               same order book, same one-signature orders. Create a key in
-              the app, stream live prices over WebSocket, and trade from
-              code.
+              the app, stream live prices over WebSocket, and place orders
+              from code.
             </p>
             <div className="fx fx-d2 mt-9 flex flex-wrap justify-center gap-3.5">
               <Link href="/docs" className="group inline-flex items-center gap-2.5 rounded-xl bg-brand px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-12px_rgba(48,124,222,0.7)] transition hover:-translate-y-0.5 hover:bg-brand-deep">
@@ -379,13 +376,17 @@ export default function Home() {
                 <span className="h-2.5 w-2.5 rounded-full bg-yes/70" />
                 <span className="ml-3 font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">terminal</span>
               </div>
-              <pre className="overflow-x-auto p-5 font-mono text-[12.5px] leading-relaxed text-[#e6edf3]">
-{`$ curl "$THASSA_API/trade-api/v1/markets?status=OPEN&limit=1"
+              {/* Lines kept ≤ ~46ch (curl -G splits the query) so the block
+                  fits a 320px phone without the page ever scrolling sideways;
+                  anything wider scrolls INSIDE the card. */}
+              <pre className="w-full max-w-full overflow-x-auto p-4 font-mono text-[11px] leading-relaxed text-[#e6edf3] sm:p-5 sm:text-[12.5px]">
+{`$ curl -G "$THASSA_API/trade-api/v1/markets" \\
+    -d status=OPEN -d limit=1
 {
   "markets": [
     {
       "id": "42",
-      "question": "Will it rain in San Francisco on Saturday?",
+      "question": "Will it rain in SF Saturday?",
       "status": "OPEN",
       "yes_price_cents": 12,
       "volume": "2730000000"

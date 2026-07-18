@@ -60,8 +60,8 @@ export default function Footer({ snap = false }: { snap?: boolean }) {
             </span>
           </div>
           <p className="mt-4 max-w-[32ch] text-[13.5px] leading-relaxed text-muted">
-            Social. Markets. Settled. A feed where every post can carry a
-            market — and every market settles in the open.
+            A feed where every post can carry a market, and every market
+            settles in the open.
           </p>
           <p className="mt-6 font-mono text-[10.5px] uppercase tracking-[0.16em] text-faint">
             © {new Date().getFullYear()} Thassa

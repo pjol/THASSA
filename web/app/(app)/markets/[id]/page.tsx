@@ -148,7 +148,7 @@ function MarketPosts({ marketId }: { marketId: string }) {
     return (
       <EmptyState
         title="No posts yet"
-        body="Attach this market to a post and earn 5% of taker fees it routes."
+        body="Attach this market to a post and earn 10% of taker fees it routes."
       />
     );
 

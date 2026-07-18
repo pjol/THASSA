@@ -31,11 +31,11 @@ import { StateChip } from "./StateChip";
 // One-word state vocabulary blurb (spec §5).
 const STATE_BLURB: Record<string, string> = {
   PENDING: "Being placed onchain.",
-  OPEN: "Live — waiting for a taker.",
+  OPEN: "Live. Waiting for a taker.",
   MATCHED: "Both sides are in.",
   SETTLING: "Oracle is resolving the outcome.",
   SETTLED: "Outcome is final.",
-  VOID: "Voided — deposits refundable.",
+  VOID: "Voided. Deposits are refundable.",
 };
 
 function sectionLabel(t: ReturnType<typeof useTheme>) {

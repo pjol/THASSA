@@ -153,6 +153,7 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/v1/me", s.handleUpdateMe)
 		r.Patch("/v1/me/settings", s.handleUpdateSettings)
 		r.Post("/v1/me/wallet", s.handleLinkWallet)
+		r.Post("/v1/me/server-signing", s.handleServerSigning)
 		r.Post("/v1/me/avatar", s.handleSetAvatar)
 		r.Get("/v1/me/badges", s.handleBadges)
 		r.Get("/v1/me/follow-requests", s.handleListFollowRequests)

@@ -70,7 +70,7 @@ const createTabs = [
   body: JSON.stringify({ name: "trading-bot", scope: "trade" }),
 });
 const { key } = await res.json();
-console.log(key.secret); // shown once — store it now`,
+console.log(key.secret); // shown once, store it now`,
   },
   {
     label: "Python",
@@ -83,7 +83,7 @@ res = requests.post(
 )
 res.raise_for_status()
 key = res.json()["key"]
-print(key["secret"])  # shown once — store it now`,
+print(key["secret"])  # shown once, store it now`,
   },
 ];
 
@@ -148,11 +148,11 @@ export default function Keys() {
       </p>
       <h1 className="mt-3">API keys</h1>
       <p>
-        Keys are managed by <strong>authenticated app users</strong> — the
+        Keys are managed by <strong>authenticated app users</strong>, the
         easiest path is the web app (<strong>Settings → Developer</strong>),
         which drives exactly these endpoints. They live under{" "}
         <code>/v1/developer/keys</code> and authenticate with your{" "}
-        <em>app session</em> (Bearer access token), not with an API key — a
+        <em>app session</em> (Bearer access token), not with an API key, a
         key cannot mint or revoke keys.
       </p>
       <ul>
@@ -184,13 +184,13 @@ export default function Keys() {
       <ClientTabs tabs={createTabs} />
       <CodeBlock title="201 response" code={createRes} />
       <Callout kind="danger" title="Secret shown once">
-        <code>secret</code> appears only in this response — it is never
+        <code>secret</code> appears only in this response, it is never
         retrievable again. Store it in a secret manager immediately.
       </Callout>
 
       <h2 id="list">List keys</h2>
       <Endpoint method="GET" path="/v1/developer/keys" auth="app session" />
-      <p>Returns metadata and prefixes — never secrets.</p>
+      <p>Returns metadata and prefixes, never secrets.</p>
       <ClientTabs tabs={listTabs} />
       <CodeBlock title="200 response" code={listRes} />
 

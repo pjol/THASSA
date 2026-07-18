@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -85,10 +86,88 @@ func (p *PrivyAPI) EmailForDID(ctx context.Context, did string) (string, error) 
 // privyUser is the subset of the get-user response we consume.
 type privyUser struct {
 	LinkedAccounts []struct {
-		Type    string `json:"type"`
-		Address string `json:"address"`
-		Email   string `json:"email"`
+		Type     string `json:"type"`
+		Address  string `json:"address"`
+		Email    string `json:"email"`
+		ID       string `json:"id"`
+		WalletID string `json:"wallet_id"`
 	} `json:"linked_accounts"`
+}
+
+// ErrServerSigningUnavailable is returned when delegated signing cannot run:
+// no app secret configured, or the user has no delegated embedded wallet.
+var ErrServerSigningUnavailable = errors.New("server-side signing unavailable")
+
+// SignTypedDataForDID signs EIP-712 typed data with the user's delegated
+// embedded wallet through Privy's wallet RPC (server delegated actions). This
+// is trade-API route 2: the user has explicitly enabled server-side signing,
+// and the platform signs on their behalf using the Privy app secret.
+func (p *PrivyAPI) SignTypedDataForDID(ctx context.Context, did string, typedData map[string]any) (string, error) {
+	if !p.Enabled() {
+		return "", ErrServerSigningUnavailable
+	}
+	u, err := p.fetchUser(ctx, did)
+	if err != nil {
+		return "", err
+	}
+	if u == nil {
+		return "", ErrServerSigningUnavailable
+	}
+	walletID := ""
+	for _, a := range u.LinkedAccounts {
+		if a.Type == "wallet" || a.Type == "smart_wallet" {
+			if a.WalletID != "" {
+				walletID = a.WalletID
+			} else if a.ID != "" {
+				walletID = a.ID
+			}
+		}
+	}
+	if walletID == "" {
+		return "", ErrServerSigningUnavailable
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"method": "eth_signTypedData_v4",
+		"params": map[string]any{"typed_data": typedData},
+	})
+	if err != nil {
+		return "", err
+	}
+	url := fmt.Sprintf("%s/wallets/%s/rpc", p.baseURL, walletID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(p.appID, p.secret)
+	req.Header.Set("privy-app-id", p.appID)
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("privy sign: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("privy sign: status %d", res.StatusCode)
+	}
+	var out struct {
+		Data struct {
+			Signature string `json:"signature"`
+		} `json:"data"`
+		Signature string `json:"signature"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return "", fmt.Errorf("privy sign decode: %w", err)
+	}
+	sig := out.Data.Signature
+	if sig == "" {
+		sig = out.Signature
+	}
+	if sig == "" {
+		return "", errors.New("privy sign: empty signature")
+	}
+	return sig, nil
 }
 
 // WalletForDID fetches the user by DID and returns the linked/embedded wallet

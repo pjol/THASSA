@@ -218,6 +218,32 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	s.writeMe(w, r, me)
 }
 
+type serverSigningRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// handleServerSigning flips the server-side signing opt-in (trade API route
+// 2). Requires a live app session, never an API key: the delegation decision
+// itself must come from the logged-in user.
+func (s *Server) handleServerSigning(w http.ResponseWriter, r *http.Request) {
+	id, _ := auth.FromContext(r.Context())
+	var req serverSigningRequest
+	if err := respond.Decode(r, &req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.db.SetServerSigning(r.Context(), id.UserID, req.Enabled); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to update setting")
+		return
+	}
+	me, err := s.db.GetMe(r.Context(), id.UserID)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to load profile")
+		return
+	}
+	s.writeMe(w, r, me)
+}
+
 type linkWalletRequest struct {
 	Address string `json:"address"`
 }

@@ -16,4 +16,4 @@ export const PLAYSTORE_URL = process.env.NEXT_PUBLIC_PLAYSTORE_URL || "";
 export const SITE_NAME = "Thassa";
 export const SITE_TAGLINE = "Social. Markets. Settled.";
 export const SITE_DESCRIPTION =
-  "Thassa is a social platform where any post can carry a prediction market — YES/NO shares priced in cents, one-signature trading with no gas fees, and every market settled in the open against publicly named sources.";
+  "Thassa is a social platform where any post can carry a prediction market. Shares are priced in cents, trading takes one signature with no gas fees, and every market settles in the open against publicly named sources.";

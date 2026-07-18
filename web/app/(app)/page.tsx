@@ -70,7 +70,7 @@ export default function HomePage() {
         <EmptyState
           icon={<CameraIcon size={40} />}
           title="Welcome to Thassa"
-          body="Follow people to fill your feed — or make the first move and post something worth betting on."
+          body="Follow people to fill your feed, or post something worth betting on."
           action={
             <Link href="/create" className="btn-brand">
               Create your first post

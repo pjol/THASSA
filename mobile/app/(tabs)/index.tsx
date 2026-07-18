@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, FlatList, Platform, Pressable, RefreshControl, Text, View, ViewToken } from "react-native";
+import { Animated, FlatList, Platform, Pressable, Text, View, ViewToken } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { LogoRefreshList } from "../../components/LogoRefresh";
 import { PostCard } from "../../components/PostCard";
 import { StoriesRail } from "../../components/stories";
 import { PostCardSkeleton } from "../../components/skeletons";
@@ -138,8 +139,11 @@ export default function Home() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <Animated.FlatList
-        ref={listRef as never}
+      <LogoRefreshList<Post>
+        ref={listRef}
+        refreshing={q.isRefetching && !q.isFetchingNextPage}
+        onRefresh={() => q.refetch()}
+        topOffset={headerH - 8}
         data={posts}
         keyExtractor={(p: Post) => p.id}
         renderItem={({ item, index }: { item: Post; index: number }) => {
@@ -169,17 +173,6 @@ export default function Home() {
         initialNumToRender={4}
         updateCellsBatchingPeriod={60}
         removeClippedSubviews={Platform.OS !== "web"}
-        refreshControl={
-          <RefreshControl
-            refreshing={q.isRefetching && !q.isFetchingNextPage}
-            onRefresh={() => q.refetch()}
-            progressViewOffset={headerH}
-            // Themed so the spinner stays visible in dark mode too.
-            tintColor={t.text}
-            colors={[t.blue]}
-            progressBackgroundColor={t.surface}
-          />
-        }
         // The stories rail scrolls away with the content — it lives at the top
         // of the feed, not in the floating chrome.
         ListHeaderComponent={<StoriesRail />}

@@ -407,7 +407,7 @@ export function MarketCard({
       )}
 
       {settleConfirm && (
-        <Sheet title="Settle market — 5¢" onClose={() => setSettleConfirm(false)}>
+        <Sheet title="Settle market (5¢)" onClose={() => setSettleConfirm(false)}>
           <p className="text-sm leading-relaxed text-fg/90">
             This runs the public settlement query through the Thassa oracle. You
             pay a <strong>5¢</strong> settlement fee. If the outcome isn&apos;t
@@ -422,7 +422,7 @@ export function MarketCard({
               Cancel
             </button>
             <button onClick={settle} disabled={settling} className="btn-accent">
-              {settling ? <Spinner size={16} /> : "Settle — 5¢"}
+              {settling ? <Spinner size={16} /> : "Settle (5¢)"}
             </button>
           </div>
         </Sheet>

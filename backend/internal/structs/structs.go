@@ -39,6 +39,9 @@ type Profile struct {
 	// (missing key = enabled). Populated only on the /v1/me shape, never on
 	// public profiles.
 	NotificationPrefs map[string]bool `json:"notification_prefs,omitempty"`
+	// ServerSigningEnabled: the owner has delegated order signing to the
+	// platform for API-key trading (trade API route 2). /v1/me only.
+	ServerSigningEnabled bool `json:"server_signing_enabled,omitempty"`
 	FollowerCount    int      `json:"follower_count"`
 	FollowingCount   int      `json:"following_count"`
 	PostCount        int      `json:"post_count"`

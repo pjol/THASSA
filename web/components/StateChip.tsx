@@ -69,7 +69,7 @@ export function creatorMicrocopy(state: ChipState): string | null {
     case "SETTLED":
       return "Outcome is final.";
     case "VOID":
-      return "Market voided — deposits refundable.";
+      return "Market voided. Deposits are refundable.";
     default:
       return null;
   }

@@ -89,14 +89,14 @@ export default function Onchain() {
       <h1 className="mt-3">Direct onchain interaction</h1>
       <p>
         The relayer is a convenience, not a gate. Power users can interact
-        with the <code>ThassaMarkets</code> contract directly — pre-approve
+        with the <code>ThassaMarkets</code> contract directly, pre-approve
         the payment token, pay your own gas, and call the book with no
         signatures relayed and no API key involved. Both paths land on the
         same order book with the same matching rules.
       </p>
 
       <h2 id="surface">Contract surface</h2>
-      <CodeBlock title="ThassaMarkets — direct-path external surface" code={surface} />
+      <CodeBlock title="ThassaMarkets, direct-path external surface" code={surface} />
       <Callout kind="info" title="Two paths, one book">
         The relayer path (<code>createMarket</code>,{" "}
         <code>placeOrdersBatch</code>) funds orders with EIP-3009
@@ -109,27 +109,27 @@ export default function Onchain() {
       <ul>
         <li>
           <code>placeOrder(marketId, side, price, shares, affiliatePostId)</code>{" "}
-          — escrows <code>price × shares</code> (YES) or the complement (NO)
+         , escrows <code>price × shares</code> (YES) or the complement (NO)
           via <code>transferFrom</code>, matches whatever crosses at the best
           levels (taker fee applies to matched shares), and rests the
           remainder. Callable by anyone onchain.
         </li>
         <li>
-          <code>cancelOrder(marketId, orderId)</code> — maker only (or via
+          <code>cancelOrder(marketId, orderId)</code>, maker only (or via
           relayer with a signed cancel); refunds the unfilled remainder to
           your free balance.
         </li>
         <li>
-          <code>settleMarket(marketId)</code> — anyone; pulls the $0.05
+          <code>settleMarket(marketId)</code>, anyone; pulls the $0.05
           settlement fee via <code>transferFrom</code> and places the hub bid.
           Re-triggerable if the bid is cancelled or expires.
         </li>
         <li>
-          <code>redeem(marketId)</code> — after <code>SETTLED</code>, pays $1
+          <code>redeem(marketId)</code>, after <code>SETTLED</code>, pays $1
           per winning share, minus the flat withdrawal fee.
         </li>
         <li>
-          <code>withdraw(amount)</code> — moves free (unescrowed) balance out,
+          <code>withdraw(amount)</code>, moves free (unescrowed) balance out,
           minus the flat withdrawal fee.
         </li>
       </ul>
@@ -166,7 +166,7 @@ export default function Onchain() {
             <tr>
               <td><code>orderDigest(order)</code></td>
               <td>
-                EIP-712 digest of a <code>SignedOrder</code> — cross-check
+                EIP-712 digest of a <code>SignedOrder</code>, cross-check
                 your client-side hashing (see{" "}
                 <Link href="/docs/protocol/gasless">Gasless orders</Link>).
               </td>
@@ -183,7 +183,7 @@ export default function Onchain() {
         <code>Withdrawn</code>, <code>CreatorFeesClaimed</code>, and{" "}
         <code>AffiliateFeesClaimed</code> for accounting flows. If you run
         your own indexer, key event processing by{" "}
-        <code>(tx_hash, log_index)</code> and upsert — re-scans are then
+        <code>(tx_hash, log_index)</code> and upsert, re-scans are then
         harmless.
       </p>
 

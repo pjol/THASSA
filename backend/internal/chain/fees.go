@@ -7,7 +7,7 @@ import "math/big"
 const (
 	TakerFeeBps         = 700
 	CreatorFeeShareBps  = 1000
-	AffiliateFeeShareBps = 500
+	AffiliateFeeShareBps = 1000
 )
 
 // TokenUnit returns 10^decimals (the $1 payout per share).

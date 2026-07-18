@@ -22,8 +22,8 @@ export default function NotFound() {
             4<span className="text-gradient-brand">0</span>4
           </h1>
           <p className="mx-auto mt-4 max-w-[380px] text-[15.5px] leading-relaxed text-muted">
-            This market never existed — the page you&rsquo;re looking for has been
-            voided. All deposits refundable.
+            This market never existed. The page you&rsquo;re looking for has been
+            voided, and all deposits are refundable.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3.5">
             <Link

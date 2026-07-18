@@ -35,13 +35,18 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: clip; /* html is the snap scroller — never scroll sideways */
+  /* html is the snap scroller — never scroll sideways. `hidden` first as the
+     fallback for older mobile Safari without `clip` support (where absolutely
+     positioned glows/wide code would otherwise widen the page). */
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
   background: rgb(var(--bg));
   color: rgb(var(--fg));
   min-width: 320px;
+  overflow-x: hidden;
   overflow-x: clip;
 }
 
@@ -300,6 +305,11 @@ html[data-snap] .snap-end {
   vertical-align: top;
 }
 .table-scroll { overflow-x: auto; }
+
+/* Mobile resilience: long unbreakable tokens (endpoint paths, header names,
+   formulas) wrap instead of widening the article on small screens. */
+.docs-prose { overflow-wrap: break-word; }
+.docs-prose code:not(pre code) { overflow-wrap: anywhere; }
 
 /* Code blocks */
 .code-block {

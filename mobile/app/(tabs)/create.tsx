@@ -471,7 +471,7 @@ export default function Create() {
       if (attachment?.kind === "new") {
         // Creator microcopy for OPEN (spec §5) — MATCHED arrives later via WS.
         toasts.show({
-          title: "Posted — market is OPEN",
+          title: "Posted. Market is OPEN.",
           body: "You're committed. Waiting for someone to take your bet.",
           icon: "flash",
         });

@@ -277,12 +277,14 @@ func (s *Store) GetMe(ctx context.Context, userID uuid.UUID) (*structs.Profile, 
 	return p, nil
 }
 
-// attachNotificationPrefs loads the owner's per-category notification toggles
-// onto a /v1/me profile. Only ever called for the caller's own profile — the
-// prefs are private and never appear on public user shapes.
+// attachNotificationPrefs loads the owner's private settings (notification
+// toggles + server-signing opt-in) onto a /v1/me profile. Only ever called
+// for the caller's own profile — never on public user shapes.
 func (s *Store) attachNotificationPrefs(ctx context.Context, userID uuid.UUID, p *structs.Profile) {
 	var raw []byte
-	if err := s.pool.QueryRow(ctx, `SELECT notification_prefs FROM users WHERE id=$1`, userID).Scan(&raw); err != nil {
+	if err := s.pool.QueryRow(ctx,
+		`SELECT notification_prefs, server_signing_enabled FROM users WHERE id=$1`, userID,
+	).Scan(&raw, &p.ServerSigningEnabled); err != nil {
 		return
 	}
 	prefs := map[string]bool{}
@@ -290,6 +292,23 @@ func (s *Store) attachNotificationPrefs(ctx context.Context, userID uuid.UUID, p
 		_ = json.Unmarshal(raw, &prefs)
 	}
 	p.NotificationPrefs = prefs
+}
+
+// SetServerSigning flips the server-side signing opt-in (trade API route 2).
+func (s *Store) SetServerSigning(ctx context.Context, userID uuid.UUID, enabled bool) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE users SET server_signing_enabled=$2, updated_at=now() WHERE id=$1`, userID, enabled)
+	return err
+}
+
+// ServerSigningEnabled reports the user's server-side signing opt-in.
+func (s *Store) ServerSigningEnabled(ctx context.Context, userID uuid.UUID) bool {
+	var on bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT server_signing_enabled FROM users WHERE id=$1`, userID).Scan(&on); err != nil {
+		return false
+	}
+	return on
 }
 
 // NotificationCategoryEnabled reports whether the user has the given

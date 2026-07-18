@@ -4,7 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListRowsSkeleton } from "../components/skeletons";
-import { BrandRefreshControl, EmptyState, ErrorState } from "../components/states";
+import { EmptyState, ErrorState } from "../components/states";
+import { LogoRefreshList } from "../components/LogoRefresh";
 import { Avatar, Button } from "../components/ui";
 import { useApi } from "../lib/api";
 import { timeAgo } from "../lib/format";
@@ -57,7 +58,7 @@ export default function Notifications() {
   const reqs = pageItems<FollowRequest>(requests.data);
 
   return (
-    <FlatList
+    <LogoRefreshList<AppNotification>
       style={{ backgroundColor: t.bg }}
       data={items}
       keyExtractor={(n) => n.id}
@@ -65,15 +66,11 @@ export default function Notifications() {
       renderItem={({ item }) => <NotificationRow n={item} />}
       onEndReached={() => q.hasNextPage && !q.isFetchingNextPage && q.fetchNextPage()}
       onEndReachedThreshold={0.4}
-      refreshControl={
-        <BrandRefreshControl
-          refreshing={q.isRefetching && !q.isFetchingNextPage}
-          onRefresh={() => {
-            q.refetch();
+      refreshing={q.isRefetching && !q.isFetchingNextPage}
+      onRefresh={() => {
+        q.refetch();
             requests.refetch();
-          }}
-        />
-      }
+      }}
       ListEmptyComponent={
         reqs.length === 0 ? (
           <EmptyState icon="notifications-outline" title="Nothing yet" subtitle="Likes, fills, and matched bets land here." />

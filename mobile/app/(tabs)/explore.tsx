@@ -6,7 +6,8 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { MarketCardSkeleton } from "../../components/skeletons";
-import { BrandRefreshControl, EmptyState, ErrorState, FooterLoading } from "../../components/states";
+import { EmptyState, ErrorState, FooterLoading } from "../../components/states";
+import { LogoRefreshList } from "../../components/LogoRefresh";
 import { StateChip } from "../../components/StateChip";
 import { Segmented, Sheet, Skeleton } from "../../components/ui";
 import { tap } from "../../lib/haptics";
@@ -94,7 +95,7 @@ export default function Explore() {
       {tab === "Posts" ? <PostsGrid /> : <MarketsList query={query} status={status} sort={sort} />}
 
       {/* Markets filter & sort sheet. */}
-      <Sheet visible={filtersOpen} onClose={() => setFiltersOpen(false)} title="Markets — filter & sort">
+      <Sheet visible={filtersOpen} onClose={() => setFiltersOpen(false)} title="Markets: filter and sort">
         <View style={{ gap: 18 }}>
           <View style={{ gap: 10 }}>
             <Text style={{ color: t.textFaint, fontSize: 11, fontWeight: "800", letterSpacing: 0.6 }}>STATUS</Text>
@@ -174,7 +175,7 @@ function PostsGrid() {
   const posts = q.data?.pages.flatMap((p) => pageItems<Post>(p)) ?? [];
 
   return (
-    <FlatList
+    <LogoRefreshList<Post>
       data={posts}
       numColumns={3}
       keyExtractor={(p) => p.id}
@@ -194,7 +195,8 @@ function PostsGrid() {
       )}
       onEndReached={() => q.hasNextPage && !q.isFetchingNextPage && q.fetchNextPage()}
       onEndReachedThreshold={0.6}
-      refreshControl={<BrandRefreshControl refreshing={q.isRefetching && !q.isFetchingNextPage} onRefresh={() => q.refetch()} />}
+      refreshing={q.isRefetching && !q.isFetchingNextPage}
+      onRefresh={() => q.refetch()}
       ListEmptyComponent={<EmptyState icon="images-outline" title="Nothing here yet" />}
       ListFooterComponent={q.isFetchingNextPage ? <FooterLoading /> : null}
     />
@@ -240,7 +242,7 @@ function MarketsList({
   const markets = q.data?.pages.flatMap((p) => pageItems<Market>(p)) ?? [];
 
   return (
-    <FlatList
+    <LogoRefreshList<Market>
       data={markets}
       keyExtractor={(m) => m.id}
       renderItem={({ item }) => (
@@ -268,7 +270,8 @@ function MarketsList({
       )}
       onEndReached={() => q.hasNextPage && !q.isFetchingNextPage && q.fetchNextPage()}
       onEndReachedThreshold={0.5}
-      refreshControl={<BrandRefreshControl refreshing={q.isRefetching && !q.isFetchingNextPage} onRefresh={() => q.refetch()} />}
+      refreshing={q.isRefetching && !q.isFetchingNextPage}
+      onRefresh={() => q.refetch()}
       ListEmptyComponent={
         <EmptyState icon="stats-chart-outline" title={search ? "No markets match" : "No markets yet"} subtitle={search ? "Try different words, or create one from a post." : "Attach one to a post to get things going."} />
       }

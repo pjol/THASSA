@@ -107,7 +107,7 @@ export function SharePostSheet({
           </View>
         ) : (
           <Text style={{ color: t.textDim, fontSize: 13.5 }}>
-            {q.isLoading ? "Loading conversations…" : "No conversations yet — start one from a profile."}
+            {q.isLoading ? "Loading conversations…" : "No conversations yet. Start one from a profile."}
           </Text>
         )}
 

@@ -57,7 +57,7 @@ const tradeEvent = `// server → client: a fill occurred
 const connectTabs = [
   {
     label: "TypeScript",
-    title: "Node (ws) — header auth",
+    title: "Node (ws), header auth",
     code: `import WebSocket from "ws";
 
 const ws = new WebSocket("${W}/v1/ws", {
@@ -76,10 +76,10 @@ ws.on("message", (raw) => {
   },
   {
     label: "Browser",
-    title: "browser — subprotocol auth",
+    title: "browser, subprotocol auth",
     code: `// Browsers can't set WebSocket headers, but they CAN send the
 // Sec-WebSocket-Protocol header via subprotocols. Pass a sentinel
-// then your key — never a query param (which would leak into logs).
+// then your key, never a query param (which would leak into logs).
 const ws = new WebSocket("${W}/v1/ws", ["thassa-key", THASSA_KEY]);
 
 ws.onopen = () =>
@@ -130,7 +130,7 @@ export default function WebSocketDocs() {
       <p>
         Authenticate on connect with the <code>X-Thassa-Key</code> header. In
         browsers, which can&rsquo;t set WebSocket headers, send the key via the{" "}
-        <code>Sec-WebSocket-Protocol</code> header instead — offer the sentinel{" "}
+        <code>Sec-WebSocket-Protocol</code> header instead, offer the sentinel{" "}
         <code>thassa-key</code> then your key as subprotocols (
         <code>new WebSocket(url, [&quot;thassa-key&quot;, KEY])</code>). Keys are
         never accepted as query parameters. Either scope (<code>read</code> or{" "}
@@ -139,13 +139,13 @@ export default function WebSocketDocs() {
       <ClientTabs tabs={connectTabs} />
 
       <h2 id="frames">Frame shape</h2>
-      <p>Every frame — both directions — is:</p>
+      <p>Every frame, both directions, is:</p>
       <CodeBlock title="frame" code={frameShape} />
 
       <h2 id="subscribe">Subscribing</h2>
       <p>
         API keys subscribe to <strong>order-book channels</strong>:{" "}
-        <code>book:{"{marketId}"}</code> — order-book deltas plus trades for
+        <code>book:{"{marketId}"}</code>, order-book deltas plus trades for
         one market. Subscribe to as many markets as you need on a single
         connection.
       </p>
@@ -167,7 +167,7 @@ export default function WebSocketDocs() {
         <Link href="/docs/api/market-data#get-book">
           <code>GET /trade-api/v1/markets/{"{id}"}/book</code>
         </Link>{" "}
-        after subscribing, then apply deltas — replacing each level&rsquo;s total
+        after subscribing, then apply deltas, replacing each level&rsquo;s total
         with <code>payload.shares</code>. Deltas are totals, not increments,
         so a missed frame self-heals on the next delta for that level.
       </p>
@@ -180,7 +180,7 @@ export default function WebSocketDocs() {
           automatically).
         </li>
         <li>
-          On reconnect, re-subscribe and re-fetch snapshots — subscriptions
+          On reconnect, re-subscribe and re-fetch snapshots, subscriptions
           don&rsquo;t survive the connection.
         </li>
         <li>

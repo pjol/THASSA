@@ -51,7 +51,7 @@ export default function Settlement() {
       <p>
         Thassa markets never settle on open-ended LLM web search. Every market
         resolves against <strong>known authoritative sources, bound at
-        creation and disclosed publicly</strong> — stored onchain, rendered in
+        creation and disclosed publicly</strong>, stored onchain, rendered in
         the app, and served by the API.
       </p>
 
@@ -63,7 +63,7 @@ export default function Settlement() {
       </p>
       <CodeBlock title="single-source settlement query" code={queryExample} />
       <p>
-        Anyone can inspect the query that will settle a market — in the app&rsquo;s
+        Anyone can inspect the query that will settle a market, in the app&rsquo;s
         market detail (&ldquo;Advanced&rdquo;), or via{" "}
         <code>GET /trade-api/v1/markets/{"{id}"}/sources</code>.
       </p>
@@ -74,7 +74,7 @@ export default function Settlement() {
         Boolean data ⇒ multi-source majority concurrence.</strong>
       </Callout>
       <p>
-        Scores, temperatures, and prices are facts one authority publishes —
+        Scores, temperatures, and prices are facts one authority publishes;
         naming a single source publicly is both sufficient and unambiguous.
         &ldquo;Did X happen&rdquo; questions are interpretations, so no single outlet
         decides them: a panel must concur.
@@ -94,7 +94,7 @@ export default function Settlement() {
             <tr>
               <td><code>sports</code></td>
               <td><code>single</code></td>
-              <td>ESPN — the single primary source for results.</td>
+              <td>ESPN, the single primary source for results.</td>
             </tr>
             <tr>
               <td><code>news</code></td>
@@ -110,7 +110,7 @@ export default function Settlement() {
               <td><code>weather</code></td>
               <td><code>single</code></td>
               <td>
-                Numeric. Exactly one allowed authoritative source — default
+                Numeric. Exactly one allowed authoritative source, default
                 NWS/NOAA (<code>api.weather.gov</code>).
               </td>
             </tr>
@@ -119,7 +119,7 @@ export default function Settlement() {
               <td><code>single</code></td>
               <td>
                 Asset pricing, numeric. Exactly one allowed source per asset
-                class — default Coinbase spot for crypto, configurable per
+                class, default Coinbase spot for crypto, configurable per
                 deployment.
               </td>
             </tr>
@@ -139,7 +139,7 @@ export default function Settlement() {
       <CodeBlock title="majority settlement query" code={majorityExample} />
       <p>For <code>majority</code>-rule markets, during fulfillment the node:</p>
       <ol>
-        <li>Fetches each panel source independently (news RSS/APIs) — in the node process, prior to any LLM call.</li>
+        <li>Fetches each panel source independently (news RSS/APIs), in the node process, prior to any LLM call.</li>
         <li>
           Derives <strong>one independent verdict per source</strong>,
           adjudicating only from that source&rsquo;s fetched evidence.
@@ -149,7 +149,7 @@ export default function Settlement() {
           panel must agree. 3 of 5 settles; 2–2 with one unavailable does not.
         </li>
         <li>
-          If there is no majority — or a source is unavailable — the node
+          If there is no majority, or a source is unavailable, the node
           produces <strong>no update</strong> (<code>_fulfilled=false</code>)
           and retries later. The market stays <code>SETTLING</code>.
         </li>
@@ -179,7 +179,7 @@ export default function Settlement() {
           <strong>refusing instructions embedded in the question</strong>.
         </li>
         <li>
-          The LLM adjudicates only from evidence the node fetched — it has no
+          The LLM adjudicates only from evidence the node fetched, it has no
           browsing or tools at settlement time.
         </li>
         <li>
@@ -193,7 +193,7 @@ export default function Settlement() {
       <h2 id="void">When settlement can&rsquo;t happen</h2>
       <p>
         A market that can never resolve cleanly can be voided by the owner
-        (<code>voidMarket</code>) — status <code>VOID</code>, all deposits
+        (<code>voidMarket</code>), status <code>VOID</code>, all deposits
         refundable. Until then, an unresolvable query simply keeps producing
         no update: funds stay escrowed and safe, never settled on a bad
         answer.

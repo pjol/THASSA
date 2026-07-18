@@ -1,27 +1,11 @@
-import { RefreshControl, View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Button, space } from "./ui";
 import { LogoSpinner } from "./LogoSpinner";
 import { Theme, useTheme, useThemedStyles } from "../lib/theme";
 
-// Brand-themed pull-to-refresh: the native spinner tinted to the whitelabel
-// palette (the OS control can't render a custom mark — every in-content
-// loader uses the spinning Thassa logo instead; see LogoSpinner).
-export function BrandRefreshControl(props: {
-  refreshing: boolean;
-  onRefresh: () => void;
-  progressViewOffset?: number;
-}) {
-  const t = useTheme();
-  return (
-    <RefreshControl
-      tintColor={t.blue}
-      colors={[t.blue]}
-      progressBackgroundColor={t.surface}
-      {...props}
-    />
-  );
-}
+// Pull-to-refresh is fully custom (our scroll-driven logo header) — see
+// components/LogoRefresh.tsx. Never use the native RefreshControl.
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080";
 

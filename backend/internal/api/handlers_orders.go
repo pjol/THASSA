@@ -56,6 +56,22 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Trade API route 2: an unsigned order (no eip-3009 auth). Only allowed
+	// when the user enabled server-side signing; the platform then completes
+	// and signs the order through their delegated Privy wallet, and the
+	// request continues through the normal validation gate below.
+	if req.Auth == nil {
+		if !s.db.ServerSigningEnabled(r.Context(), id.UserID) {
+			respond.Error(w, http.StatusForbidden,
+				"unsigned order: include a signed eip-3009 auth, or enable server-side signing for your account")
+			return
+		}
+		if errMsg := s.serverSignOrder(r, id, &req.orderPayload, big.NewInt(*chainMarketID)); errMsg != "" {
+			respond.Error(w, http.StatusServiceUnavailable, errMsg)
+			return
+		}
+	}
+
 	order, authv, orderErr := s.validateOrder(r, id, req.orderPayload, big.NewInt(*chainMarketID))
 	if orderErr != "" {
 		respond.Error(w, http.StatusBadRequest, orderErr)

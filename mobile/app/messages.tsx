@@ -3,7 +3,8 @@ import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListRowsSkeleton } from "../components/skeletons";
-import { BrandRefreshControl, EmptyState, ErrorState } from "../components/states";
+import { EmptyState, ErrorState } from "../components/states";
+import { LogoRefreshList } from "../components/LogoRefresh";
 import { Avatar } from "../components/ui";
 import { useApi } from "../lib/api";
 import { timeAgo } from "../lib/format";
@@ -45,11 +46,12 @@ export default function Messages() {
   const conversations = pageItems<Conversation>(q.data);
 
   return (
-    <FlatList
+    <LogoRefreshList<Conversation>
       style={{ backgroundColor: t.bg }}
       data={conversations}
       keyExtractor={(c) => c.id}
-      refreshControl={<BrandRefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} />}
+      refreshing={q.isRefetching}
+      onRefresh={() => q.refetch()}
       ListEmptyComponent={
         <EmptyState icon="chatbubbles-outline" title="No messages yet" subtitle="Say hi to someone from their profile." />
       }

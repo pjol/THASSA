@@ -9,7 +9,8 @@ import { space, useTheme } from "../lib/theme";
 import { nextCursorOf, pageItems, type Paged, type UserBrief, type UserProfile } from "../lib/types";
 import { FollowButton } from "./FollowButton";
 import { ListRowsSkeleton } from "./skeletons";
-import { BrandRefreshControl, EmptyState, ErrorState } from "./states";
+import { EmptyState, ErrorState } from "./states";
+import { LogoRefreshList } from "./LogoRefresh";
 import { Avatar } from "./ui";
 
 // Browsable followers / following list (spec §7d.3). Rows are UserBrief; the
@@ -54,13 +55,14 @@ export function FollowList({ username, kind }: { username: string; kind: "follow
   }
 
   return (
-    <FlatList
+    <LogoRefreshList
       style={{ backgroundColor: t.bg }}
       data={users}
       keyExtractor={(u) => u.id}
       onEndReached={() => q.hasNextPage && !q.isFetchingNextPage && q.fetchNextPage()}
       onEndReachedThreshold={0.4}
-      refreshControl={<BrandRefreshControl refreshing={q.isRefetching && !q.isFetchingNextPage} onRefresh={() => q.refetch()} />}
+      refreshing={q.isRefetching && !q.isFetchingNextPage}
+      onRefresh={() => q.refetch()}
       renderItem={({ item }) => (
         <View
           style={{

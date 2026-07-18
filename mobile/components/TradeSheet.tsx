@@ -335,7 +335,7 @@ export function SettleSheet({
   const feeCopy = useMemo(() => dollars(unitsToDollars(dollarsToUnits(0.05))), []);
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Settle market — 5¢">
+    <Sheet visible={visible} onClose={onClose} title="Settle market (5¢)">
       <View style={{ paddingHorizontal: space.lg, gap: space.md }}>
         <Text style={{ color: t.textDim, fontSize: 14, lineHeight: 20 }}>
           This sends the public settlement query to the Thassa oracle. Anyone can trigger it; you pay
@@ -345,7 +345,7 @@ export function SettleSheet({
           <ResolutionBlock market={market} />
         </View>
         {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
-        <Button title="Settle market — 5¢" onPress={settle} loading={busy} variant="accent" />
+        <Button title="Settle market (5¢)" onPress={settle} loading={busy} variant="accent" />
         <Button title="Cancel" onPress={onClose} variant="subtle" />
       </View>
     </Sheet>

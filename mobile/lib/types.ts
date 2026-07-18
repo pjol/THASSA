@@ -64,6 +64,9 @@ export interface Me {
   // Per-category notification toggles (missing key = enabled). Categories:
   // likes, comments, mentions, follows, messages, markets, trading.
   notification_prefs?: Record<string, boolean>;
+  // Trade API route 2: the user let the platform sign API orders through
+  // their delegated wallet, so plain API keys can trade.
+  server_signing_enabled?: boolean;
   onboarded?: boolean;
   // True for the REAL user when their verified email is an admin (spec §7c.1).
   is_admin?: boolean;

@@ -37,7 +37,7 @@ const orderPayload = `{
     "value": "63700000",
     "valid_after": "0",
     "valid_before": "1752969600",
-    "auth_nonce": "0x83fa…11cd",    // = orderDigest(order) — signature carriage
+    "auth_nonce": "0x83fa…11cd",    // = orderDigest(order), signature carriage
     "v": 27,
     "r": "0x5c02…aa19",
     "s": "0x2e8d…03b7"
@@ -64,7 +64,7 @@ import { randomUUID } from "node:crypto";
 const account = privateKeyToAccount(process.env.WALLET_KEY as \`0x\${string}\`);
 const wallet = createWalletClient({ account, transport: http(RPC_URL) });
 
-// 1. Build the order. nonce is per-maker sequential — read it from
+// 1. Build the order. nonce is per-maker sequential, read it from
 //    GET /trade-api/v1/balance (order_nonce) or the contract's nonces(maker).
 const order = {
   marketId: 42n,
@@ -78,7 +78,7 @@ const order = {
   maker: account.address,
 };
 
-// 2. Compute the order's EIP-712 digest — domain {ThassaMarkets, 1, chainId, contract}.
+// 2. Compute the order's EIP-712 digest, domain {ThassaMarkets, 1, chainId, contract}.
 const orderDigest = hashTypedData({
   domain: {
     name: "ThassaMarkets",
@@ -134,7 +134,7 @@ const signature = await wallet.signTypedData({
 });
 const { v, r, s } = parseSignature(signature);
 
-// 4. Submit — idempotently.
+// 4. Submit, idempotently.
 const res = await fetch("${B}/trade-api/v1/orders", {
   method: "POST",
   headers: {
@@ -172,7 +172,7 @@ const curlOrder = `curl -X POST "${B}/trade-api/v1/orders" \\
   -H "X-Thassa-Key: $THASSA_KEY" \\
   -H "Idempotency-Key: $(uuidgen)" \\
   -H "Content-Type: application/json" \\
-  -d @order.json   # payload as shown above — signed client-side`;
+  -d @order.json   # payload as shown above, signed client-side`;
 
 const pyOrder = `import os, uuid, requests
 
@@ -322,7 +322,7 @@ export default function Trading() {
         <Link href="/docs/getting-started#idempotency">
           <code>Idempotency-Key</code>
         </Link>
-        . Order placement goes through the same relayer gate as the app —
+        . Order placement goes through the same relayer gate as the app:
         same validation, same batching, same states.
       </p>
 
@@ -333,7 +333,7 @@ export default function Trading() {
         the order fields plus an EIP-3009 authorization whose{" "}
         <code>auth_nonce</code> equals the order&rsquo;s EIP-712 digest (the{" "}
         <Link href="/docs/protocol/gasless#signature-carriage">signature
-        carriage convention</Link>). The API never signs for you — it
+        carriage convention</Link>). The API never signs for you, it
         validates and relays.
       </p>
       <Callout kind="danger" title="Maker binding">
@@ -409,7 +409,7 @@ export default function Trading() {
       <h2 id="get-fills">List your fills</h2>
       <Endpoint method="GET" path="/trade-api/v1/fills" auth="X-Thassa-Key · scope read" />
       <p>
-        Your execution history across markets — every match your orders
+        Your execution history across markets, every match your orders
         participated in, with price, shares, fee, and transaction hash.
       </p>
       <ClientTabs tabs={authedGetTabs("/trade-api/v1/fills", "fills")} />

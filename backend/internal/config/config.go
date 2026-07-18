@@ -69,6 +69,8 @@ type Config struct {
 	ChainRPCURL           string
 	ChainID               int64
 	PaymentTokenAddress   string
+	PaymentTokenName      string
+	PaymentTokenVersion   string
 	MarketsContractAddr   string
 	HubAddress            string
 	RelayerPrivateKey     string
@@ -132,6 +134,8 @@ func Load() *Config {
 		ChainRPCURL:         get("CHAIN_RPC_URL", "http://localhost:8545"),
 		ChainID:             getInt64("CHAIN_ID", 31337),
 		PaymentTokenAddress: os.Getenv("PAYMENT_TOKEN_ADDRESS"),
+		PaymentTokenName:    get("PAYMENT_TOKEN_NAME", "MockUSD"),
+		PaymentTokenVersion: get("PAYMENT_TOKEN_VERSION", "1"),
 		MarketsContractAddr: os.Getenv("MARKETS_CONTRACT_ADDRESS"),
 		HubAddress:          os.Getenv("HUB_ADDRESS"),
 		RelayerPrivateKey:   os.Getenv("RELAYER_PRIVATE_KEY"),

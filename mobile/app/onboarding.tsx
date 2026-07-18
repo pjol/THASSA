@@ -145,7 +145,7 @@ export default function Onboarding() {
           {isEdit ? "Edit profile" : "Set up your profile"}
         </Text>
         <Text style={{ color: t.textDim, fontSize: 14.5, marginBottom: space.xl }}>
-          {isEdit ? "Update how you show up on Thassa." : "Pick a username — you can change everything later."}
+          {isEdit ? "Update how you show up on Thassa." : "Pick a username. You can change everything later."}
         </Text>
 
         <Pressable onPress={pickAvatar} style={{ alignSelf: "center", marginBottom: space.xl }}>

@@ -19,10 +19,10 @@ export const metadata: Metadata = {
 const feeFormula = `fee = ceil(7% × shares × p × (100 − p) / 10000)   // dollars, p = execution price in cents
     = ceil(takerFeeBps × shares × p × (100 − p) / 10000 / 10000)   // takerFeeBps = 700`;
 
-const crossExample = `Resting (maker):  buy NO  @ 40¢ × 500 shares     — the maker
-Incoming (taker): buy YES @ 65¢ × 300 shares     — crosses: 65 + 40 ≥ 100
+const crossExample = `Resting (maker):  buy NO  @ 40¢ × 500 shares     (the maker)
+Incoming (taker): buy YES @ 65¢ × 300 shares     (crosses: 65 + 40 ≥ 100
 
-Execution: 300 shares AT THE MAKER'S LEVEL — taker pays 100 − 40 = 60¢/share
+Execution: 300 shares AT THE MAKER'S LEVEL ; taker pays 100 − 40 = 60¢/share
   taker escrow used:  300 × $0.60 = $180  (+ taker fee)
   maker escrow used:  300 × $0.40 = $120
   → each matched pair holds $1.00/share, fully collateralized`;
@@ -44,7 +44,7 @@ export default function Markets() {
       <ul>
         <li>
           An order is always <strong>&ldquo;buy <code>side</code> at limit price{" "}
-          <code>p</code> cents for <code>shares</code> shares&rdquo;</strong> —
+          <code>p</code> cents for <code>shares</code> shares&rdquo;</strong>;
           there is no separate sell verb; exiting a YES position means buying
           NO (or redeeming after settlement).
         </li>
@@ -58,7 +58,7 @@ export default function Markets() {
         </li>
         <li>
           <strong>Crossing:</strong> buy YES @ <code>p</code> matches resting
-          buy NO @ <code>q</code> whenever <code>p + q ≥ 100</code> — together
+          buy NO @ <code>q</code> whenever <code>p + q ≥ 100</code>, together
           the pair fully collateralizes the $1 payout.
         </li>
       </ul>
@@ -76,7 +76,7 @@ export default function Markets() {
         </li>
         <li>
           <strong>Execution at the maker&rsquo;s price.</strong> The resting
-          order&rsquo;s level sets the execution price — a taker&rsquo;s aggressive
+          order&rsquo;s level sets the execution price, a taker&rsquo;s aggressive
           limit only widens what can cross; it never worsens the fill.
         </li>
       </ul>
@@ -115,7 +115,7 @@ export default function Markets() {
             <tr>
               <td><StateChip state="MATCHED" /></td>
               <td>
-                The creator&rsquo;s opening bet has been taken — the first fill
+                The creator&rsquo;s opening bet has been taken, the first fill
                 landed. Trading continues.
               </td>
             </tr>
@@ -163,7 +163,7 @@ export default function Markets() {
 
       <h2 id="creation">Creating a market</h2>
       <p>
-        Market creation is <strong>free</strong> — no protocol fee — but the
+        Market creation is <strong>free</strong>, no protocol fee, but the
         creator&rsquo;s initial order must deposit at least <strong>$1</strong> of
         capital. That opening bet is the market&rsquo;s first liquidity, and the
         creator is committed to it: the market shows{" "}
@@ -174,14 +174,14 @@ export default function Markets() {
 
       <h2 id="fees">Fees</h2>
       <p>
-        Fees are <strong>taker-side only</strong> — makers pay nothing. The
+        Fees are <strong>taker-side only</strong>, makers pay nothing. The
         fee on each match, at execution price <code>p</code> (the maker&rsquo;s
         price, in cents):
       </p>
       <CodeBlock title="taker fee" code={feeFormula} />
       <p>
-        The fee is quadratic in uncertainty — largest at 50¢, vanishing toward
-        1¢/99¢ — and is deducted from the taker&rsquo;s escrow, rounded{" "}
+        The fee is quadratic in uncertainty, largest at 50¢, vanishing toward
+        1¢/99¢, and is deducted from the taker&rsquo;s escrow, rounded{" "}
         <strong>up</strong> at the token&rsquo;s base unit.
       </p>
       <h3 id="fee-examples">Worked examples</h3>
@@ -232,7 +232,7 @@ export default function Markets() {
           <code>claimCreatorFees</code>).
         </li>
         <li>
-          <strong>5%</strong> goes to the <strong>affiliate</strong> — the
+          <strong>10%</strong> goes to the <strong>affiliate</strong>, the
           post whose market widget routed the order (
           <code>affiliatePostId</code>; <code>0</code> = none, in which case
           the share goes to the protocol).
@@ -283,7 +283,7 @@ export default function Markets() {
           trigger. Status → <StateChip state="SETTLING" />.
         </li>
         <li>
-          The oracle pipeline resolves the outcome — see{" "}
+          The oracle pipeline resolves the outcome, see{" "}
           <Link href="/docs/protocol/settlement">Settlement &amp; sources</Link>.
           Status → <StateChip state="SETTLED" direction="YES" />.
         </li>
@@ -296,7 +296,7 @@ export default function Markets() {
 
       <Callout kind="info" title="Fee constants (owner-settable)">
         <code>takerFeeBps = 700</code> · <code>creatorFeeShareBps = 1000</code>{" "}
-        · <code>affiliateFeeShareBps = 500</code> ·{" "}
+        · <code>affiliateFeeShareBps = 1000</code> ·{" "}
         <code>withdrawalFlatFee</code> default $0.10 ·{" "}
         <code>settlementFee</code> default $0.05.
       </Callout>

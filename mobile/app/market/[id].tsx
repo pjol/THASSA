@@ -261,7 +261,7 @@ function TradeTab({ market, canSettle, onSettle }: { market: Market; canSettle: 
       {advanced ? (
         <View style={{ gap: space.md, backgroundColor: t.surfaceAlt, borderRadius: radius.lg, padding: space.md }}>
           <ResolutionBlock market={market} />
-          {canSettle ? <Button title="Settle market — 5¢" variant="accent" small onPress={onSettle} /> : null}
+          {canSettle ? <Button title="Settle market (5¢)" variant="accent" small onPress={onSettle} /> : null}
         </View>
       ) : null}
     </View>

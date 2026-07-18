@@ -133,7 +133,7 @@ struct Market {
 **Fees (Kalshi-like, taker-side)**:
 - Taker fee on each match: `fee = ceil(7% × shares × p × (100−p) / 10000)` (p = execution price
   in cents; fee in token units). Makers pay no fee. Fee is deducted from the taker's escrow.
-- Splits per collected fee: **10% → market creator** (accrues, claimable), **5% → affiliate**
+- Splits per collected fee: **10% → market creator** (accrues, claimable), **10% → affiliate**
   (the post whose widget routed the order — `affiliatePostId → address` registered by the
   platform; 0 = none, share goes to protocol), remainder → protocol vault.
 - Market creation: free. **Capital withdrawal fee**: flat fee (default $0.10, owner-configurable,
@@ -703,7 +703,7 @@ event MarketSettled(uint256 indexed marketId, bool direction);
 ```
 
 Fee constants (owner-settable): `takerFeeBps = 700` (applied to `shares × p × (100−p) / 10000` dollars),
-`creatorFeeShareBps = 1000`, `affiliateFeeShareBps = 500`, `withdrawalFlatFee` (default $0.10),
+`creatorFeeShareBps = 1000`, `affiliateFeeShareBps = 1000`, `withdrawalFlatFee` (default $0.10),
 `settlementFee` (default $0.05).
 
 ## 10. Conventions inherited from ../ASSEMBLY (imitate precisely)

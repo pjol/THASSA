@@ -11,7 +11,8 @@ import { nextCursorOf, pageItems, type Comment, type Paged } from "../lib/types"
 import { MentionInput } from "./MentionInput";
 import { MentionText } from "./MentionText";
 import { ListRowsSkeleton } from "./skeletons";
-import { BrandRefreshControl, EmptyState } from "./states";
+import { EmptyState } from "./states";
+import { LogoRefreshList } from "./LogoRefresh";
 import { Avatar } from "./ui";
 
 // Comments with likes and replies — the same surface for posts and markets
@@ -70,7 +71,7 @@ export function CommentsList({
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
-      <FlatList
+      <LogoRefreshList<Comment>
         data={comments}
         keyExtractor={(c) => c.id}
         ListHeaderComponent={header}
@@ -85,12 +86,8 @@ export function CommentsList({
           )
         }
         contentContainerStyle={{ paddingBottom: 12, flexGrow: 1 }}
-        refreshControl={
-          <BrandRefreshControl
-            refreshing={q.isRefetching && !q.isFetchingNextPage}
-            onRefresh={() => q.refetch()}
-          />
-        }
+        refreshing={q.isRefetching && !q.isFetchingNextPage}
+      onRefresh={() => q.refetch()}
       />
       <View style={{ borderTopWidth: 1, borderTopColor: t.border, padding: space.md, gap: 6 }}>
         {replyTo ? (

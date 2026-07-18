@@ -7,11 +7,11 @@ import Pager from "@/components/docs/Pager";
 export const metadata: Metadata = {
   title: "Gasless orders",
   description:
-    "Thassa's one-signature order flow: the EIP-712 Order type, the EIP-3009 funding authorization, and the signature carriage convention binding them — authNonce = order digest.",
+    "Thassa's one-signature order flow: the EIP-712 Order type, the EIP-3009 funding authorization, and the signature carriage convention binding them, authNonce = order digest.",
   openGraph: {
     title: "Gasless orders",
     description:
-      "Thassa's one-signature order flow: the EIP-712 Order type, the EIP-3009 funding authorization, and the signature carriage convention binding them — authNonce = order digest.",
+      "Thassa's one-signature order flow: the EIP-712 Order type, the EIP-3009 funding authorization, and the signature carriage convention binding them, authNonce = order digest.",
   },
 };
 
@@ -128,13 +128,13 @@ export default function Gasless() {
         </li>
         <li>
           <code>affiliatePostId</code> credits the post that routed the trade
-          with 5% of collected taker fees; <code>0</code> = none.
+          with 10% of collected taker fees; <code>0</code> = none.
         </li>
       </ul>
 
       <h2 id="auth3009">The funding authorization</h2>
       <p>
-        Funding rides an EIP-3009 payload for the payment token —{" "}
+        Funding rides an EIP-3009 payload for the payment token:{" "}
         <code>from = order.maker</code>,{" "}
         <code>to = the markets contract</code>, always:
       </p>
@@ -144,9 +144,9 @@ export default function Gasless() {
       <Callout kind="danger" title="The one rule to get right">
         <strong><code>SignedOrder</code> carries no signature fields.</strong>{" "}
         For order placement, <code>auth.authNonce</code> MUST equal{" "}
-        <code>orderDigest(order)</code> — the maker&rsquo;s EIP-712 typed-data
+        <code>orderDigest(order)</code> (the maker)&rsquo;s EIP-712 typed-data
         digest under domain{" "}
-        <code>{`{ThassaMarkets, 1, chainId, contract}`}</code> — so the single
+        <code>{`{ThassaMarkets, 1, chainId, contract}`}</code>, so the single
         EIP-3009 signature commits to both the payment and the order.
       </Callout>
       <p>
@@ -154,7 +154,7 @@ export default function Gasless() {
         <code>ReceiveWithAuthorization</code> typed data whose{" "}
         <code>nonce</code> is the order digest. Because the digest covers
         every order field, tampering with any of them changes the digest,
-        which invalidates the payment authorization — the order and its
+        which invalidates the payment authorization, the order and its
         funding are inseparable.
       </p>
       <ul>
@@ -164,7 +164,7 @@ export default function Gasless() {
         </li>
         <li>
           The relayer <strong>recomputes and validates the binding</strong>{" "}
-          before batching — a mismatched <code>authNonce</code> is rejected at
+          before batching, a mismatched <code>authNonce</code> is rejected at
           the door.
         </li>
         <li>
@@ -186,8 +186,8 @@ export default function Gasless() {
       </p>
       <CodeBlock title="signing.ts" code={digestSnippet} />
       <p>
-        For the complete end-to-end example — building the payload and
-        submitting it to <code>POST /trade-api/v1/orders</code> — see{" "}
+        For the complete end-to-end example, building the payload and
+        submitting it to <code>POST /trade-api/v1/orders</code>, see{" "}
         <Link href="/docs/api/trading">Trading API</Link>.
       </p>
 
@@ -195,7 +195,7 @@ export default function Gasless() {
       <ul>
         <li>
           Queues signed orders and submits batches every ~2s (or 25 orders)
-          via <code>placeOrdersBatch(SignedOrder[], Auth3009[])</code> —
+          via <code>placeOrdersBatch(SignedOrder[], Auth3009[])</code>;
           batching is what amortizes gas to zero for users.
         </li>
         <li>

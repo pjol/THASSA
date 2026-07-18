@@ -244,7 +244,7 @@ function SecretOnceSheet({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error("Couldn't copy — select and copy manually.");
+      toast.error("Couldn't copy. Select and copy it manually.");
     }
   };
 

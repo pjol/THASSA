@@ -81,14 +81,14 @@ export default function GettingStarted() {
       <p>
         Thassa has a <strong>single user base shared by the app and the
         API</strong>. There is no separate developer signup: your API keys
-        act as <em>you</em> — same identity, same wallet, same positions, same
+        act as <em>you</em>, same identity, same wallet, same positions, same
         balance. An order placed via the API shows up in your app profile, and
         vice versa.
       </p>
       <ul>
         <li>
           <strong>Sign up in the app.</strong> Accounts (and the embedded
-          wallet that signs your orders) are created in the Thassa app — the
+          wallet that signs your orders) are created in the Thassa app, the
           API has no signup endpoint.
         </li>
         <li>
@@ -99,7 +99,7 @@ export default function GettingStarted() {
         <li>
           <strong>Orders are still yours to sign.</strong> The API is
           non-custodial: mutating calls carry payloads signed by your own
-          wallet. A key alone can never move funds — see{" "}
+          wallet. A key alone can never move funds, see{" "}
           <Link href="/docs/protocol/gasless">Gasless orders</Link>.
         </li>
       </ul>
@@ -141,7 +141,7 @@ export default function GettingStarted() {
         for identification. Lose it and you mint a new key.
       </Callout>
       <p>
-        Keys can also be managed programmatically — see{" "}
+        Keys can also be managed programmatically, see{" "}
         <Link href="/docs/api/keys">API keys endpoints</Link>.
       </p>
 
@@ -154,15 +154,35 @@ export default function GettingStarted() {
       <p>
         The WebSocket accepts the same header on connect, or (in browsers, which
         can&rsquo;t set headers) the key via the{" "}
-        <code>Sec-WebSocket-Protocol</code> header — see{" "}
+        <code>Sec-WebSocket-Protocol</code> header, see{" "}
         <Link href="/docs/api/websocket">WebSocket</Link>. Keys are never passed
         as query parameters.
       </p>
 
+      <h2 id="access-routes">Two ways to trade</h2>
+      <p>The trade API accepts two credentials, matching two ways of signing orders.</p>
+      <ul>
+        <li>
+          <strong>Live session (OAuth style).</strong> Send your Privy access
+          token as <code>Authorization: Bearer &lt;token&gt;</code>. This is
+          the route for agents and MCP-style integrations that hold a real
+          login. The session acts as you with full scope, and your client
+          signs orders locally, exactly like the app does.
+        </li>
+        <li>
+          <strong>API key with server-side signing.</strong> Turn on
+          server-side signing in Settings, then submit orders with just{" "}
+          <code>X-Thassa-Key</code> and no <code>auth</code> block. Thassa
+          completes the order (nonce, expiry, max cost) and signs it through
+          your delegated wallet. Without the opt-in, API keys can still trade
+          by sending fully signed payloads.
+        </li>
+      </ul>
+
       <h2 id="environments">Environments & base URLs</h2>
       <p>
         All examples in these docs are rendered against the configured base
-        URL — currently <code>{API_URL}</code>. The docs site reads it from{" "}
+        URL, currently <code>{API_URL}</code>. The docs site reads it from{" "}
         <code>NEXT_PUBLIC_API_URL</code> at build time, so a deployment can
         point every snippet at its own environment.
       </p>
@@ -195,15 +215,15 @@ export default function GettingStarted() {
       <p>Route prefixes, by audience:</p>
       <ul>
         <li>
-          <code>/trade-api/v1/…</code> — the public trading API documented
+          <code>/trade-api/v1/…</code>, the public trading API documented
           here (market data + authenticated trading).
         </li>
         <li>
-          <code>/v1/developer/keys</code> — key management (app-session
+          <code>/v1/developer/keys</code>, key management (app-session
           authenticated).
         </li>
         <li>
-          <code>/v1/ws</code> — the WebSocket endpoint, which accepts API-key
+          <code>/v1/ws</code>, the WebSocket endpoint, which accepts API-key
           auth for market-data channels.
         </li>
       </ul>
@@ -228,17 +248,17 @@ export default function GettingStarted() {
 
       <h2 id="envelopes">Response envelope</h2>
       <p>
-        Successful responses wrap data under a <strong>named key</strong> —
+        Successful responses wrap data under a <strong>named key</strong>,
         never a bare array. List endpoints paginate with{" "}
         <code>?cursor=&amp;limit=</code> and return <code>next_cursor</code>{" "}
         (absent or <code>null</code> on the last page). Pass it back verbatim
         to fetch the next page.
       </p>
-      <CodeBlock title="GET /trade-api/v1/markets — 200" code={envelopeExample} />
+      <CodeBlock title="GET /trade-api/v1/markets, 200" code={envelopeExample} />
 
       <h2 id="errors">Error format</h2>
       <p>
-        Every error — 4xx or 5xx — is a single lowercase message under{" "}
+        Every error, 4xx or 5xx, is a single lowercase message under{" "}
         <code>error</code>:
       </p>
       <CodeBlock title="401 Unauthorized" code={errorExample} />
@@ -251,7 +271,7 @@ export default function GettingStarted() {
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>400</code></td><td>Malformed request — bad ids, unknown fields, invalid payloads.</td></tr>
+            <tr><td><code>400</code></td><td>Malformed request, bad ids, unknown fields, invalid payloads.</td></tr>
             <tr><td><code>401</code></td><td>Missing or invalid <code>X-Thassa-Key</code>.</td></tr>
             <tr><td><code>403</code></td><td>Key lacks the required scope (e.g. <code>read</code> key on a mutation), or the resource is gated.</td></tr>
             <tr><td><code>404</code></td><td>No such resource.</td></tr>
@@ -265,7 +285,7 @@ export default function GettingStarted() {
       <h2 id="idempotency">Idempotency-Key</h2>
       <p>
         Every mutating endpoint accepts an <code>Idempotency-Key</code> header
-        — a client-generated UUID. Semantics:
+       , a client-generated UUID. Semantics:
       </p>
       <ul>
         <li>
@@ -274,7 +294,7 @@ export default function GettingStarted() {
         </li>
         <li>
           <strong>Replay</strong> (same key, byte-identical request) returns
-          the stored response without re-executing — a double-submitted order
+          the stored response without re-executing, a double-submitted order
           never double-spends.
         </li>
         <li>

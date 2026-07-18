@@ -25,7 +25,7 @@ export class ApiError extends Error {
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 401) return "Please sign in again.";
-    if (err.status === 429) return "Slow down a little — try again in a moment.";
+    if (err.status === 429) return "Slow down a little and try again in a moment.";
     // Warp is view-only — mutations are blocked server-side (spec §7c.2).
     if (err.status === 403 && err.body?.error === READ_ONLY_WHILE_WARPED)
       return "You're viewing as another user — exit warp to make changes.";

@@ -22,7 +22,7 @@ export default function Endpoint({
       >
         {method}
       </span>
-      <code className="font-mono text-[13px] font-semibold text-fg">{path}</code>
+      <code className="break-all font-mono text-[13px] font-semibold text-fg">{path}</code>
       <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
         {auth}
       </span>

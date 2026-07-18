@@ -79,12 +79,12 @@ export default function Architecture() {
 
       <h3 id="markets-contract">ThassaMarkets</h3>
       <p>
-        One contract holds <strong>all</strong> markets — no per-market
+        One contract holds <strong>all</strong> markets, no per-market
         deployments, which keeps creation gas-free at the protocol level. It
         extends <code>ThassaOracle</code>, making it an oracle <em>client</em>{" "}
         of the hub: it places settlement bids and receives the hub&rsquo;s
         callback. It also runs the entire{" "}
-        <Link href="/docs/protocol/markets">order book</Link> — escrow,
+        <Link href="/docs/protocol/markets">order book</Link>, escrow,
         matching, fees, redemption.
       </p>
 
@@ -104,8 +104,8 @@ export default function Architecture() {
         <code>removeSigner</code>, <code>isSigner</code>,{" "}
         <code>signerCount</code>) verifies each update: the update&rsquo;s{" "}
         <code>fulfiller</code> must be an authorized signer, and the signature
-        — EIP-191 <code>personal_sign</code> over the hub&rsquo;s{" "}
-        <code>ProofUpdateV2</code> digest — must recover to that exact
+       , EIP-191 <code>personal_sign</code> over the hub&rsquo;s{" "}
+        <code>ProofUpdateV2</code> digest, must recover to that exact
         fulfiller. Signer changes emit <code>SignerAdded</code> /{" "}
         <code>SignerRemoved</code>.
       </p>
@@ -117,22 +117,22 @@ export default function Architecture() {
       <ol>
         <li>
           Parses the structured settlement query from bid <code>inputData</code>{" "}
-          — <code>{`{question, category, rule, sources}`}</code>.
+         , <code>{`{question, category, rule, sources}`}</code>.
         </li>
         <li>
           <strong>Fetches the bound sources itself</strong> (ESPN, NWS, news
-          APIs, pricing APIs) — in the node process, before and separate from
+          APIs, pricing APIs), in the node process, before and separate from
           any LLM call.
         </li>
         <li>
-          Adjudicates <strong>only from the fetched evidence</strong> — no open
+          Adjudicates <strong>only from the fetched evidence</strong>, no open
           web search. For <code>majority</code>-rule queries the node computes
           concurrence in code, one independent verdict per source.
         </li>
         <li>
           Signs the response envelope echoing the <code>marketId</code>, or
           produces <strong>no update</strong> (<code>_fulfilled=false</code>)
-          when the outcome isn&rsquo;t determinable yet — sources unavailable, no
+          when the outcome isn&rsquo;t determinable yet, sources unavailable, no
           majority, event not concluded. The bid stays open and the node
           retries later.
         </li>
@@ -158,20 +158,20 @@ export default function Architecture() {
       <h2 id="offchain">Around the contracts</h2>
       <ul>
         <li>
-          <strong>Relayer</strong> — batches EIP-712-signed orders into{" "}
+          <strong>Relayer</strong>, batches EIP-712-signed orders into{" "}
           <code>placeOrdersBatch</code> and pays gas. It only ever submits to
           allowlisted platform contracts and whitelisted methods, and
           validates every EIP-3009 authorization pays the markets contract
           before relaying. Never arbitrary calldata.
         </li>
         <li>
-          <strong>Indexer</strong> — subscribes to contract events (
+          <strong>Indexer</strong>, subscribes to contract events (
           <code>OrderPlaced</code>, <code>OrderMatched</code>,{" "}
           <code>MarketSettled</code>, …), maintains the read models the API
           serves, and pushes WebSocket deltas.
         </li>
         <li>
-          <strong>Settlement runner</strong> — collects the $0.05 settlement
+          <strong>Settlement runner</strong>, collects the $0.05 settlement
           fee, calls <code>settleMarket</code>, and watches the hub to flip
           statuses and notify.
         </li>
@@ -181,7 +181,7 @@ export default function Architecture() {
         The canonical settlement path is Thassa&rsquo;s own node signing response
         blobs, verified onchain against an explicit signer set. It is a
         deliberate, transparent trust anchor: the signer set is public, every
-        settlement query is public, and every source is publicly named — see{" "}
+        settlement query is public, and every source is publicly named, see{" "}
         <Link href="/docs/protocol/settlement">Settlement &amp; sources</Link>.
       </Callout>
 

@@ -338,7 +338,7 @@ contract ThassaMarketsTest is Test {
 
         uint256 fee = _takerFee(50, 60);
         uint256 creatorShare = (fee * 1000) / 10000;
-        uint256 affiliateShare = (fee * 500) / 10000;
+        uint256 affiliateShare = (fee * 1000) / 10000;
         uint256 protocolShare = fee - creatorShare - affiliateShare;
 
         assertEq(markets.getMarket(marketId).creatorFeesAccrued, creatorShare);

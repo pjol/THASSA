@@ -8,7 +8,7 @@ import { APP_URL, APPSTORE_URL, PLAYSTORE_URL } from "@/lib/config";
 export const metadata: Metadata = {
   title: "Download",
   description:
-    "Get Thassa on iOS and Android, or open the web app. One account everywhere — feed, markets, wallet, and the developer API.",
+    "Get Thassa on iOS and Android, or open the web app. One account for the feed, markets, wallet, and the developer API.",
   openGraph: {
     title: "Download Thassa",
     description:
@@ -96,9 +96,9 @@ export default function Download() {
               Thassa in your <span className="text-gradient-brand">pocket</span>.
             </h1>
             <p className="anim-rise-2 mx-auto mt-5 max-w-[520px] text-[16.5px] leading-relaxed text-muted">
-              The full feed, every market, and your wallet — one account across
-              mobile, web, and the API. Scan the code or grab it from your
-              store.
+              The full feed, every market, and your wallet, with one account
+              across mobile, web, and the API. Scan the code or grab it from
+              your store.
             </p>
           </div>
 
@@ -133,8 +133,8 @@ export default function Download() {
                 </svg>
               </a>
               <p className="max-w-[420px] text-center text-[13px] leading-relaxed text-faint md:text-left">
-                One Thassa account works everywhere — sign up once in the app
-                and the same login powers the web app and{" "}
+                One Thassa account works everywhere. Sign up once in the app
+                and the same login works in the web app and{" "}
                 <a href="/docs" className="font-medium text-brand hover:underline">
                   the developer API
                 </a>

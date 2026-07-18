@@ -53,7 +53,7 @@ export default function LoginPage() {
         <div className="mt-8 flex items-center justify-center gap-2 text-xs text-muted">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-yes" /> YES
           <span className="ml-3 inline-block h-1.5 w-1.5 rounded-full bg-no" /> NO
-          <span className="ml-3">— every post can carry a market.</span>
+          <span className="ml-3">Every post can carry a market.</span>
         </div>
       </div>
     </div>

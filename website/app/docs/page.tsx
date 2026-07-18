@@ -44,7 +44,7 @@ export default function DocsHome() {
       <h1 className="mt-3">Build on the social prediction platform</h1>
       <p>
         Thassa pairs a social feed with cent-priced binary prediction markets.
-        Everything the app can do with markets, your code can do too — the app
+        Everything the app can do with markets, your code can do too. The app
         and the API share <strong>one user base, one order book, and one
         non-custodial signing model</strong>. These docs cover the protocol
         (contracts, settlement, fees) and the full trading API.
@@ -58,8 +58,8 @@ export default function DocsHome() {
       </p>
       <CodeBlock title="terminal" code={quickstart} />
       <p>
-        Trading requires an API key minted in the app —{" "}
-        <Link href="/docs/getting-started">start here</Link>.
+        Trading requires an API key minted in the app.{" "}
+        <Link href="/docs/getting-started">Start here</Link>.
       </p>
 
       <h2 id="sections">Sections</h2>
@@ -84,7 +84,7 @@ export default function DocsHome() {
           <strong>Non-custodial by construction.</strong> Orders are EIP-712
           typed data funded by an EIP-3009 payment authorization; the
           authorization&rsquo;s nonce <em>is</em> the order digest, so one signature
-          commits to both. Thassa relays and pays gas — it never holds keys or
+          commits to both. Thassa relays and pays gas. It never holds keys or
           funds.
         </li>
         <li>
@@ -98,8 +98,8 @@ export default function DocsHome() {
         <li>
           <strong>Settlement is public.</strong> Every market stores a
           structured settlement query onchain naming the exact sources that
-          decide it — numeric data settles on one publicly named source,
-          boolean news on a majority of a five-source panel.
+          decide it. Numeric data settles on one publicly named source, and
+          news settles on a majority of a five-source panel.
         </li>
       </ul>
 

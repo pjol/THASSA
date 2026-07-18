@@ -99,7 +99,7 @@ contract ThassaMarkets is IThassaMarkets, ThassaOracle, EIP712, Ownable, Reentra
 
     uint16 public takerFeeBps = 700;
     uint16 public creatorFeeShareBps = 1000;
-    uint16 public affiliateFeeShareBps = 500;
+    uint16 public affiliateFeeShareBps = 1000;
     uint256 public withdrawalFlatFee;
     uint256 public settlementFee;
 

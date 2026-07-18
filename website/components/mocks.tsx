@@ -68,7 +68,7 @@ export function PostCardMock() {
       <div className="relative mx-4 aspect-[4/3] overflow-hidden rounded-2xl bg-gradient-to-br from-brand/80 via-brand-deep to-[#0A2A55]">
         <div className="absolute inset-0 opacity-30 [background:radial-gradient(60%_50%_at_70%_20%,white,transparent_70%)]" />
         <div className="absolute bottom-3 left-3 rounded-full bg-black/35 px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-white backdrop-blur">
-          Race day — Bay to Breakers
+          Race day: Bay to Breakers
         </div>
       </div>
       {/* actions */}
@@ -158,7 +158,7 @@ export function OrderBookMock() {
         </div>
       </div>
       <p className="mt-4 rounded-xl border border-brand/20 bg-brand/[0.06] px-3 py-2 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-brand">
-        64¢ Yes + 36¢ No ≥ 100 — crossed
+        64¢ Yes + 36¢ No ≥ 100: crossed
       </p>
     </div>
   );

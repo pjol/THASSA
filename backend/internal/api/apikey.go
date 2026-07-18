@@ -92,14 +92,48 @@ func (s *Server) resolveAPIKey(ctx context.Context, presented string) (*auth.Ide
 	return &auth.Identity{UserID: userID, Wallet: wallet}, scope
 }
 
-// apiKeyAuth is the /trade-api middleware: authenticates X-Thassa-Key,
-// attaches the identity + scope, and applies a per-key rate limit.
+// resolveBearerIdentity authenticates a live user session (a Privy access
+// token) on the trade API. This is access route 1, the OAuth-style path for
+// agents and MCP servers that hold a real login and sign orders client-side,
+// exactly like the app. A live session acts as the user with full scope.
+func (s *Server) resolveBearerIdentity(r *http.Request) *auth.Identity {
+	token := bearerToken(r)
+	if token == "" {
+		return nil
+	}
+	claims, err := s.verifier.Verify(r.Context(), token)
+	if err != nil || claims.Subject == "" {
+		return nil
+	}
+	userID, username, wallet, err := s.db.UpsertUserByPrivyDID(r.Context(), claims.Subject, claims.Wallet)
+	if err != nil {
+		return nil
+	}
+	return &auth.Identity{UserID: userID, PrivyDID: claims.Subject, Wallet: wallet, Username: username}
+}
+
+// apiKeyAuth is the /trade-api middleware. Two access routes:
+//  1. Authorization: Bearer <privy access token>. A live session, full scope,
+//     client-side signing (the OAuth/MCP path).
+//  2. X-Thassa-Key. A developer API key; scope-checked. Signed payloads
+//     always work; unsigned order submission additionally requires the user's
+//     server-side signing opt-in (see handleCreateOrder).
 func (s *Server) apiKeyAuth(requiredScope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			presented := presentedAPIKey(r)
 			if presented == "" {
-				respond.Error(w, http.StatusUnauthorized, "missing api key")
+				if id := s.resolveBearerIdentity(r); id != nil {
+					if !s.keyLimiter.Allow("bearer:" + id.UserID.String()) {
+						respond.Error(w, http.StatusTooManyRequests, "rate limit exceeded")
+						return
+					}
+					ctx := auth.WithIdentity(r.Context(), id)
+					ctx = context.WithValue(ctx, ctxScopeKey{}, "trade")
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+				respond.Error(w, http.StatusUnauthorized, "missing api key or bearer token")
 				return
 			}
 			id, scope := s.resolveAPIKey(r.Context(), presented)

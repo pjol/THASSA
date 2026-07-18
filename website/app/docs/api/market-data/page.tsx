@@ -194,7 +194,7 @@ export default function MarketData() {
       />
       <CodeBlock title="200 response" code={bookRes} />
       <Callout kind="info">
-        A YES level at 62¢ crosses a NO level at 38¢ or better —{" "}
+        A YES level at 62¢ crosses a NO level at 38¢ or better:{" "}
         <code>p + q ≥ 100</code>. The spread here is 62 + 37 = 99: one cent
         apart.
       </Callout>
@@ -226,7 +226,7 @@ export default function MarketData() {
       <Endpoint method="GET" path="/trade-api/v1/markets/{id}/sources" auth="no auth" />
       <p>
         Resolution transparency: the parsed authoritative sources bound to
-        this market, with the category and rule that governs them — see{" "}
+        this market, with the category and rule that governs them, see{" "}
         <Link href="/docs/protocol/settlement">Settlement &amp; sources</Link>.
       </p>
       <ClientTabs

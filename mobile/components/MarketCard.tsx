@@ -387,7 +387,7 @@ export function MarketCard({
 
                 {side != null && shares > 0 ? (
                   <Text style={{ color: t.text, fontWeight: "700", fontSize: 13.5 }}>
-                    {shares} share{shares === 1 ? "" : "s"} — you pay <Text style={{ fontWeight: "800" }}>{dollars(pay)}</Text> to win{" "}
+                    {shares} share{shares === 1 ? "" : "s"}. You pay <Text style={{ fontWeight: "800" }}>{dollars(pay)}</Text> to win{" "}
                     <Text style={{ color: side === "yes" ? t.yes : t.no, fontWeight: "800" }}>{dollars(win)}</Text>
                   </Text>
                 ) : null}
@@ -425,7 +425,7 @@ export function MarketCard({
 
           {settled && market.resolved_fifty ? (
             <Text style={{ color: t.textDim, fontWeight: "600", fontSize: 12.5 }}>
-              Expired before settlement — resolved 50/50 (each share pays 50¢).
+              Expired before settlement. Resolved 50/50, so each share pays 50¢.
             </Text>
           ) : null}
 
@@ -462,7 +462,7 @@ export function MarketCard({
                     paddingHorizontal: 14,
                   }}
                 >
-                  <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 13 }}>Settle market — 5¢</Text>
+                  <Text style={{ color: t.onAccent, fontWeight: "800", fontSize: 13 }}>Settle market (5¢)</Text>
                 </Pressable>
               ) : null}
             </View>
