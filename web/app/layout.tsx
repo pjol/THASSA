@@ -13,7 +13,15 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: { default: "Thassa", template: "%s · Thassa" },
   description: "Share moments. Bet on what happens next.",
-  icons: { icon: "/thassa-logo.svg" },
+  // The new large logo set: SVG plus big PNGs for PWA installs and iOS.
+  icons: {
+    icon: [
+      { url: "/thassa-logo.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
