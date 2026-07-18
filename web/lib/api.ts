@@ -3,7 +3,11 @@
 import { useCallback, useMemo } from "react";
 import { API_URL } from "@/lib/config";
 import { useAuthToken } from "@/providers/AuthProvider";
+import { getWarpTargetId } from "@/lib/warp";
 import type { MediaItem } from "@/lib/types";
+
+// Backend copy for a mutation rejected because an admin is warped (spec §7c.2).
+const READ_ONLY_WHILE_WARPED = "read-only while warped";
 
 type TokenGetter = () => Promise<string | null>;
 
@@ -22,6 +26,9 @@ export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 401) return "Please sign in again.";
     if (err.status === 429) return "Slow down a little — try again in a moment.";
+    // Warp is view-only — mutations are blocked server-side (spec §7c.2).
+    if (err.status === 403 && err.body?.error === READ_ONLY_WHILE_WARPED)
+      return "You're viewing as another user — exit warp to make changes.";
     if (err.status >= 500) return "Something went wrong on our end. Try again.";
     return err.message;
   }
@@ -63,6 +70,11 @@ export class Api {
     const idempotencyKey = mutating
       ? opts?.idempotencyKey ?? newIdempotencyKey()
       : undefined;
+    // Warp header (spec §7c.2): while an admin is warped into a user, EVERY
+    // backend request carries the target's id so the server returns/gates all
+    // data as that user. Read per-request from the module-level store so the
+    // Api instance never needs re-creating when warp toggles.
+    const warpTargetId = getWarpTargetId();
 
     const doFetch = () =>
       fetch(`${API_URL}${path}`, {
@@ -71,6 +83,7 @@ export class Api {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+          ...(warpTargetId ? { "X-Thassa-Warp": warpTargetId } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });

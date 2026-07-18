@@ -66,12 +66,12 @@ func scopeFromContext(ctx context.Context) (string, bool) {
 	return s, ok
 }
 
-// presentedAPIKey extracts the key from X-Thassa-Key or ?key=.
+// presentedAPIKey extracts the key from the X-Thassa-Key header. (On the
+// WebSocket upgrade the key may instead ride the Sec-WebSocket-Protocol header;
+// that path is handled in privyAuth via wsProtocolCreds.) Keys are never read
+// from query parameters, so they can't leak into URLs or logs.
 func presentedAPIKey(r *http.Request) string {
-	if k := strings.TrimSpace(r.Header.Get("X-Thassa-Key")); k != "" {
-		return k
-	}
-	return strings.TrimSpace(r.URL.Query().Get("key"))
+	return strings.TrimSpace(r.Header.Get("X-Thassa-Key"))
 }
 
 // resolveAPIKey authenticates a presented key: hash lookup + constant-time

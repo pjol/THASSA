@@ -18,8 +18,8 @@ export function OrderBook({ marketId, compact }: { marketId: string; compact?: b
 
   const load = useCallback(() => {
     api
-      .get<OrderBookSummary>(`/v1/markets/${marketId}/book`)
-      .then(setBook)
+      .get<{ book: OrderBookSummary }>(`/v1/markets/${marketId}/book`)
+      .then((r) => setBook(r.book))
       .catch(() => setFailed(true));
   }, [api, marketId]);
 
@@ -52,15 +52,18 @@ export function OrderBook({ marketId, compact }: { marketId: string; compact?: b
   }
 
   const rows = compact ? 4 : 8;
-  const yes = book.yes.slice(0, rows);
-  const no = book.no.slice(0, rows);
+  const yes = (book.yes ?? []).slice(0, rows);
+  const no = (book.no ?? []).slice(0, rows);
   const maxShares = Math.max(1, ...yes.map((l) => l.shares), ...no.map((l) => l.shares));
 
   return (
     <View>
       <View style={{ flexDirection: "row", gap: 12 }}>
         <BookColumn label="YES bids" color={t.yes} tint={t.yesTint} levels={yes} maxShares={maxShares} />
-        <BookColumn label="NO bids" color={t.no} tint={t.noTint} levels={no} maxShares={maxShares} />
+        {/* NO bids display as their YES-equivalent (100 − q) so both columns
+            read on one price axis: a NO bid at 40¢ appears at 60¢ — exactly
+            what a YES taker would pay to cross it. */}
+        <BookColumn label="NO bids" color={t.no} tint={t.noTint} levels={no} maxShares={maxShares} complement />
       </View>
       {book.last_trade_price_cents != null ? (
         <Text style={{ color: t.textFaint, fontSize: 12, marginTop: 8, textAlign: "center" }}>
@@ -77,12 +80,15 @@ function BookColumn({
   tint,
   levels,
   maxShares,
+  complement,
 }: {
   label: string;
   color: string;
   tint: string;
   levels: BookLevel[];
   maxShares: number;
+  // Display prices as 100 − p (NO bids on the YES price axis).
+  complement?: boolean;
 }) {
   const t = useTheme();
   return (
@@ -107,7 +113,9 @@ function BookColumn({
               }}
             />
             <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 6 }}>
-              <Text style={{ color, fontWeight: "800", fontSize: 12.5 }}>{l.price_cents}¢</Text>
+              <Text style={{ color, fontWeight: "800", fontSize: 12.5 }}>
+                {complement ? 100 - l.price_cents : l.price_cents}¢
+              </Text>
               <Text style={{ color: t.textDim, fontSize: 12.5 }}>{l.shares}</Text>
             </View>
           </View>

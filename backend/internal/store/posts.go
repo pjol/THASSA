@@ -22,7 +22,7 @@ var postSelect = fmt.Sprintf(`
 	       EXISTS(SELECT 1 FROM likes l WHERE l.subject_type='post' AND l.subject_id=p.id AND l.user_id=$1),
 	       p.created_at,
 	       m.id, m.chain_market_id, m.title, m.question, m.status, m.direction,
-	       m.yes_price_cents, m.no_price_cents, m.volume, m.created_at,
+	       m.yes_price_cents, m.no_price_cents, m.volume, m.expires_at, m.resolved_fifty, m.created_at,
 	       CASE WHEN m.id IS NOT NULL AND %[1]s THEN
 	           (SELECT json_build_object('side', ps.side, 'shares', ps.shares,
 	                   'avg_price_cents', ps.avg_price_cents, 'realized_pnl', ps.realized_pnl)
@@ -105,7 +105,10 @@ func (s *Store) MarketTopPosts(ctx context.Context, viewerID, marketID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	return posts, s.attachMedia(ctx, posts)
+	if err := s.attachMedia(ctx, posts); err != nil {
+		return nil, err
+	}
+	return posts, s.attachMentions(ctx, posts)
 }
 
 // GetPost loads a single post if visible to the viewer.
@@ -121,26 +124,41 @@ func (s *Store) GetPost(ctx context.Context, viewerID, postID uuid.UUID) (*struc
 	if err := s.attachMedia(ctx, posts); err != nil {
 		return nil, err
 	}
+	if err := s.attachMentions(ctx, posts); err != nil {
+		return nil, err
+	}
 	return &posts[0], nil
 }
 
 // CreatePost inserts a post and attaches previously-uploaded media by id
-// (media rows must belong to the author). Returns the created post id.
-func (s *Store) CreatePost(ctx context.Context, authorID uuid.UUID, caption *string, kind string, marketID *uuid.UUID, mediaIDs []uuid.UUID) (uuid.UUID, time.Time, error) {
+// (media rows must belong to the author). @-mentions (spec §7d.2) are stored
+// verbatim in posts.mentions and normalized into post_mentions (deduped) for
+// notification/"tagged" lookups. The author's denormalized post_count is
+// incremented in the same transaction (spec §7d.5). Returns the created post id
+// and the deduped set of mentioned user ids (for post.mention notifications).
+func (s *Store) CreatePost(ctx context.Context, authorID uuid.UUID, caption *string, kind string, marketID *uuid.UUID, mediaIDs []uuid.UUID, mentions []structs.MentionInput) (uuid.UUID, time.Time, []uuid.UUID, error) {
+	if mentions == nil {
+		mentions = []structs.MentionInput{}
+	}
+	mentionsJSON, err := json.Marshal(mentions)
+	if err != nil {
+		return uuid.Nil, time.Time{}, nil, err
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return uuid.Nil, time.Time{}, err
+		return uuid.Nil, time.Time{}, nil, err
 	}
 	defer tx.Rollback(ctx)
 
 	var postID uuid.UUID
 	var createdAt time.Time
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO posts (author_id, caption, kind, market_id)
-		VALUES ($1,$2,$3,$4) RETURNING id, created_at`,
-		authorID, caption, kind, marketID,
+		INSERT INTO posts (author_id, caption, kind, market_id, mentions)
+		VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
+		authorID, caption, kind, marketID, mentionsJSON,
 	).Scan(&postID, &createdAt); err != nil {
-		return uuid.Nil, time.Time{}, err
+		return uuid.Nil, time.Time{}, nil, err
 	}
 	for i, mid := range mediaIDs {
 		tag, err := tx.Exec(ctx, `
@@ -148,27 +166,60 @@ func (s *Store) CreatePost(ctx context.Context, authorID uuid.UUID, caption *str
 			WHERE id=$3 AND owner_id=$4 AND post_id IS NULL`,
 			postID, i, mid, authorID)
 		if err != nil {
-			return uuid.Nil, time.Time{}, err
+			return uuid.Nil, time.Time{}, nil, err
 		}
 		if tag.RowsAffected() == 0 {
-			return uuid.Nil, time.Time{}, errors.New("media not found or already attached")
+			return uuid.Nil, time.Time{}, nil, errors.New("media not found or already attached")
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return uuid.Nil, time.Time{}, err
+	// Normalized mention rows (deduped on the composite PK).
+	seen := map[uuid.UUID]bool{}
+	mentionedIDs := []uuid.UUID{}
+	for _, m := range mentions {
+		if m.UserID == uuid.Nil || seen[m.UserID] {
+			continue
+		}
+		seen[m.UserID] = true
+		mentionedIDs = append(mentionedIDs, m.UserID)
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO post_mentions (post_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+			postID, m.UserID); err != nil {
+			return uuid.Nil, time.Time{}, nil, err
+		}
 	}
-	return postID, createdAt, nil
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET post_count = post_count + 1 WHERE id=$1`, authorID); err != nil {
+		return uuid.Nil, time.Time{}, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, time.Time{}, nil, err
+	}
+	return postID, createdAt, mentionedIDs, nil
 }
 
-// DeletePost soft-deletes the caller's own post.
+// DeletePost soft-deletes the caller's own post and decrements the author's
+// denormalized post_count in the same transaction (guarded ≥ 0, spec §7d.5).
 func (s *Store) DeletePost(ctx context.Context, authorID, postID uuid.UUID) (bool, error) {
-	tag, err := s.pool.Exec(ctx,
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx,
 		`UPDATE posts SET deleted_at=now(), updated_at=now() WHERE id=$1 AND author_id=$2 AND deleted_at IS NULL`,
 		postID, authorID)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	if tag.RowsAffected() == 0 {
+		return false, tx.Commit(ctx)
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET post_count = GREATEST(post_count - 1, 0) WHERE id=$1`, authorID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
 }
 
 // PostAffiliateInfo returns the author, the author's wallet (the affiliate
@@ -206,6 +257,9 @@ func (s *Store) pagePosts(ctx context.Context, sql string, limit int, args ...an
 	if err := s.attachMedia(ctx, posts); err != nil {
 		return nil, nil, err
 	}
+	if err := s.attachMentions(ctx, posts); err != nil {
+		return nil, nil, err
+	}
 	var next *string
 	if n := len(posts); n > 0 && n >= limit {
 		next = NextCursor(n, limit, posts[n-1].CreatedAt, posts[n-1].ID)
@@ -232,13 +286,15 @@ func (s *Store) queryPosts(ctx context.Context, sql string, args ...any) ([]stru
 			mYes      *int
 			mNo       *int
 			mVol      *int64
+			mExpires  *time.Time
+			mFifty    *bool
 			mCreated  *time.Time
 			posJSON   []byte
 			authorPnl *int64
 		)
 		if err := rows.Scan(&p.ID, &p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.AvatarURL,
 			&p.Caption, &p.Kind, &p.LikeCount, &p.CommentCount, &p.LikedByMe, &p.CreatedAt,
-			&mID, &mChain, &mTitle, &mQuestion, &mStatus, &mDir, &mYes, &mNo, &mVol, &mCreated,
+			&mID, &mChain, &mTitle, &mQuestion, &mStatus, &mDir, &mYes, &mNo, &mVol, &mExpires, &mFifty, &mCreated,
 			&posJSON, &authorPnl); err != nil {
 			return nil, err
 		}
@@ -247,7 +303,8 @@ func (s *Store) queryPosts(ctx context.Context, sql string, args ...any) ([]stru
 			p.Market = &structs.MarketSummary{
 				ID: *mID, ChainMarketID: mChain, Title: deref(mTitle), Question: deref(mQuestion),
 				Status: deref(mStatus), Direction: mDir, YesPriceCents: mYes, NoPriceCents: mNo,
-				Volume: derefI64(mVol), CreatedAt: derefT(mCreated),
+				Volume: derefI64(mVol), ExpiresAt: mExpires, ResolvedFifty: mFifty != nil && *mFifty,
+				CreatedAt: derefT(mCreated),
 			}
 		}
 		if len(posJSON) > 0 {
@@ -258,6 +315,7 @@ func (s *Store) queryPosts(ctx context.Context, sql string, args ...any) ([]stru
 		}
 		p.AuthorPnl = authorPnl
 		p.Media = []structs.Media{}
+		p.Mentions = []structs.Mention{}
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -274,7 +332,7 @@ func (s *Store) attachMedia(ctx context.Context, posts []structs.Post) error {
 		idx[p.ID] = i
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT post_id, id, kind, s3_key, variant_key, hls_key, width, height, duration_ms, status, position
+		SELECT post_id, id, kind, s3_key, variant_key, hls_key, poster_key, variants, width, height, duration_ms, status, position
 		FROM post_media WHERE post_id = ANY($1) ORDER BY position`, ids)
 	if err != nil {
 		return err
@@ -284,16 +342,60 @@ func (s *Store) attachMedia(ctx context.Context, posts []structs.Post) error {
 		var pid uuid.UUID
 		var m structs.Media
 		var key string
-		var variantKey, hlsKey *string
-		if err := rows.Scan(&pid, &m.ID, &m.Kind, &key, &variantKey, &hlsKey,
+		var variantKey, hlsKey, posterKey *string
+		var variantsJSON []byte
+		if err := rows.Scan(&pid, &m.ID, &m.Kind, &key, &variantKey, &hlsKey, &posterKey, &variantsJSON,
 			&m.Width, &m.Height, &m.DurationMS, &m.Status, &m.Position); err != nil {
 			return err
 		}
-		m.URL = s.url(key)
+		m.URL = s.mediaURL(m.Kind, key, variantKey)
 		m.VariantURL = s.urlPtr(variantKey)
 		m.HLSURL = s.urlPtr(hlsKey)
+		m.PosterURL = s.urlPtr(posterKey)
+		m.Variants = s.resolveVariants(variantsJSON)
 		if i, ok := idx[pid]; ok {
 			posts[i].Media = append(posts[i].Media, m)
+		}
+	}
+	return rows.Err()
+}
+
+// attachMentions resolves every post's @-mentions to the mentioned users'
+// CURRENT profile (spec §7d.2: rename-safe) in a single batched query joining
+// posts.mentions → users. One query per page (no N+1). Mentions whose user no
+// longer exists are dropped by the join.
+func (s *Store) attachMentions(ctx context.Context, posts []structs.Post) error {
+	if len(posts) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, len(posts))
+	idx := map[uuid.UUID]int{}
+	for i, p := range posts {
+		ids[i] = p.ID
+		idx[p.ID] = i
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.id,
+		       (m.value->>'user_id')::uuid, (m.value->>'start')::int, (m.value->>'len')::int,
+		       u.username, u.display_name, u.avatar_url
+		FROM posts p
+		CROSS JOIN LATERAL jsonb_array_elements(p.mentions) AS m(value)
+		JOIN users u ON u.id = (m.value->>'user_id')::uuid
+		WHERE p.id = ANY($1)
+		ORDER BY (m.value->>'start')::int`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid uuid.UUID
+		var mn structs.Mention
+		if err := rows.Scan(&pid, &mn.UserID, &mn.Start, &mn.Len,
+			&mn.Username, &mn.DisplayName, &mn.AvatarURL); err != nil {
+			return err
+		}
+		if i, ok := idx[pid]; ok {
+			posts[i].Mentions = append(posts[i].Mentions, mn)
 		}
 	}
 	return rows.Err()

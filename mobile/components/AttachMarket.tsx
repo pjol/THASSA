@@ -14,11 +14,13 @@ import {
   type Paged,
   type Side,
 } from "../lib/types";
+import { MarketDetails } from "./MarketDetails";
 import { OrderBook } from "./OrderBook";
 import { PriceSlider } from "./PriceSlider";
 import { PriceStepper } from "./TradeSheet";
 import { StateChip } from "./StateChip";
 import { useInputStyle } from "./ui";
+import { LogoSpinner } from "./LogoSpinner";
 
 // "Attach market" flow inside Create (spec §7): typeahead over existing
 // markets (top matches as chips with prices) → simple $ amount + Advanced
@@ -46,26 +48,36 @@ export function AttachMarket({
 
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<Market[]>([]);
+  // Stored generation candidates from OTHER users' past queries — surfaced as
+  // "Start market" suggestions before this user has to generate anything.
+  const [suggested, setSuggested] = useState<(MarketCandidate & { id: string })[]>([]);
   const [searching, setSearching] = useState(false);
   const [candidates, setCandidates] = useState<MarketCandidate[] | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Search-as-you-type over existing markets FIRST (spec §6.5).
+  // Search-as-you-type over existing markets FIRST (spec §6.5), plus stored
+  // not-yet-started generation candidates.
   useEffect(() => {
     if (value) return;
     if (debounce.current) clearTimeout(debounce.current);
     const q = query.trim();
     if (q.length < 2) {
       setMatches([]);
+      setSuggested([]);
       return;
     }
     debounce.current = setTimeout(() => {
       setSearching(true);
       api
-        .get<Paged<Market>>(`/v1/markets/search?q=${encodeURIComponent(q)}`)
-        .then((r) => setMatches(pageItems<Market>(r)))
+        .get<{ markets: Market[]; generated?: (MarketCandidate & { id: string })[] }>(
+          `/v1/markets/search?q=${encodeURIComponent(q)}`
+        )
+        .then((r) => {
+          setMatches(r.markets ?? []);
+          setSuggested(r.generated ?? []);
+        })
         .catch(() => {})
         .finally(() => setSearching(false));
     }, 250);
@@ -79,12 +91,12 @@ export function AttachMarket({
     setGenError(null);
     setCandidates(null);
     try {
-      const res = await api.post<{ candidates: MarketCandidate[]; matches?: Market[] }>(
+      const res = await api.post<{ candidates: MarketCandidate[]; existing_markets?: Market[] }>(
         "/v1/markets/generate",
         { query: query.trim() }
       );
       setCandidates((res.candidates ?? []).slice(0, 3));
-      if (res.matches?.length) setMatches(res.matches);
+      if (res.existing_markets?.length) setMatches(res.existing_markets);
     } catch (e) {
       setGenError(errorMessage(e));
     } finally {
@@ -116,7 +128,7 @@ export function AttachMarket({
           value={query}
           onChangeText={setQuery}
         />
-        {searching ? <ActivityIndicator color={t.blue} /> : null}
+        {searching ? <LogoSpinner size={22} /> : null}
       </View>
 
       {/* Existing matches as chips with prices */}
@@ -152,6 +164,44 @@ export function AttachMarket({
         </View>
       ) : null}
 
+      {/* Stored generation candidates nobody has started yet. */}
+      {suggested.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          {suggested.map((g) => (
+            <Pressable
+              key={g.id}
+              onPress={() => {
+                tap();
+                onChange({ kind: "new", candidate: g, side: "yes", spend: 5, priceCents: 50 });
+              }}
+              style={{
+                borderWidth: 1,
+                borderColor: t.blue,
+                borderStyle: "dashed",
+                borderRadius: radius.md,
+                padding: space.md,
+                gap: 4,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={{ color: t.text, fontWeight: "700", fontSize: 14, flex: 1 }} numberOfLines={1}>
+                  {g.title || g.question}
+                </Text>
+                <View style={{ backgroundColor: t.blueTint, borderRadius: radius.full, paddingVertical: 4, paddingHorizontal: 9 }}>
+                  <Text style={{ color: t.blue, fontWeight: "800", fontSize: 10, letterSpacing: 0.5 }}>START MARKET</Text>
+                </View>
+              </View>
+              <Text style={{ color: t.textDim, fontSize: 12.5 }} numberOfLines={2}>
+                {g.question}
+              </Text>
+              <Text style={{ color: t.textFaint, fontSize: 11.5 }} numberOfLines={1}>
+                {settlementSummary(g)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {/* Generate */}
       {query.trim().length >= 3 ? (
         <Pressable
@@ -167,7 +217,7 @@ export function AttachMarket({
             opacity: generating ? 0.6 : 1,
           }}
         >
-          {generating ? <ActivityIndicator color={t.blue} size="small" /> : <Ionicons name="sparkles" size={17} color={t.blue} />}
+          {generating ? <LogoSpinner size={17} /> : <Ionicons name="sparkles" size={17} color={t.blue} />}
           <Text style={{ color: t.blue, fontWeight: "700", fontSize: 14 }}>
             {generating ? "Generating candidates…" : `Generate a market for “${query.trim()}”`}
           </Text>
@@ -199,12 +249,34 @@ export function AttachMarket({
             {c.question}
           </Text>
           <Text style={{ color: t.textFaint, fontSize: 11.5 }} numberOfLines={2}>
-            Settles by: {candidateSettlementQuery(c)}
+            {settlementSummary(c)}
           </Text>
         </Pressable>
       ))}
     </View>
   );
+}
+
+// Human-readable one-liner for how a candidate settles: parses the settlement
+// query JSON (never shown raw) and prefers structured rule/source fields.
+function settlementSummary(c: MarketCandidate): string {
+  let rule = c.rule ?? null;
+  let sources = c.sources ?? [];
+  let parsedQuestion: string | null = null;
+  if (!rule || sources.length === 0) {
+    try {
+      const p = JSON.parse(candidateSettlementQuery(c) || "{}");
+      rule = rule ?? p.rule ?? null;
+      if (sources.length === 0 && Array.isArray(p.sources)) sources = p.sources;
+      parsedQuestion = typeof p.question === "string" ? p.question : null;
+    } catch {
+      /* not JSON */
+    }
+  }
+  const names = sources.map((s) => s?.name).filter(Boolean).join(", ");
+  if (rule === "majority") return `Settles by majority of ${names || "news sources"}`;
+  if (names) return `Settles via ${names}`;
+  return parsedQuestion ? `Settles on: ${parsedQuestion}` : "Settlement details on the market page";
 }
 
 function AttachedEditor({
@@ -219,6 +291,7 @@ function AttachedEditor({
   const t = useTheme();
   const inputStyle = useInputStyle();
   const [advanced, setAdvanced] = useState(false);
+  const [fullDetails, setFullDetails] = useState(false);
   const [amountText, setAmountText] = useState(String(value.spend));
 
   const isNew = value.kind === "new";
@@ -339,6 +412,23 @@ function AttachedEditor({
             </View>
           ) : null}
         </>
+      ) : null}
+
+      {/* Full market details — review exactly what you're attaching, for both a
+          selected existing market and a generated candidate. */}
+      <Pressable
+        onPress={() => setFullDetails((f) => !f)}
+        style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+      >
+        <Ionicons name={fullDetails ? "chevron-down" : "chevron-forward"} size={15} color={t.blue} />
+        <Text style={{ color: t.blue, fontWeight: "700", fontSize: 12.5 }}>Full market details</Text>
+      </Pressable>
+      {fullDetails ? (
+        value.kind === "existing" ? (
+          <MarketDetails market={value.market} />
+        ) : (
+          <MarketDetails candidate={value.candidate} />
+        )
       ) : null}
     </View>
   );

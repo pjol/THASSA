@@ -1,18 +1,47 @@
-import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
+import { RefreshControl, View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Button, space } from "./ui";
+import { LogoSpinner } from "./LogoSpinner";
 import { Theme, useTheme, useThemedStyles } from "../lib/theme";
+
+// Brand-themed pull-to-refresh: the native spinner tinted to the whitelabel
+// palette (the OS control can't render a custom mark — every in-content
+// loader uses the spinning Thassa logo instead; see LogoSpinner).
+export function BrandRefreshControl(props: {
+  refreshing: boolean;
+  onRefresh: () => void;
+  progressViewOffset?: number;
+}) {
+  const t = useTheme();
+  return (
+    <RefreshControl
+      tintColor={t.blue}
+      colors={[t.blue]}
+      progressBackgroundColor={t.surface}
+      {...props}
+    />
+  );
+}
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080";
 
-// Inline spinner for first-load of a list/screen.
+// Screen/section loader: the spinning Thassa mark.
 export function Loading({ label }: { label?: string }) {
-  const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.center}>
-      <ActivityIndicator color={theme.blue} size="large" />
+      <LogoSpinner size={46} />
       {label ? <Text style={styles.dim}>{label}</Text> : null}
+    </View>
+  );
+}
+
+// Compact infinite-scroll footer ("loading more"): a small spinning mark, not
+// the full-height section loader.
+export function FooterLoading() {
+  return (
+    <View style={{ paddingVertical: 18, alignItems: "center" }}>
+      <LogoSpinner size={26} />
     </View>
   );
 }

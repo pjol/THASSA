@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { useWalletSigner } from "@/providers/AuthProvider";
 import { useToast } from "@/providers/ToastProvider";
+import { useWarp } from "@/providers/WarpProvider";
 import { QRCode } from "@/components/QRCode";
 import { Sheet } from "@/components/Sheet";
 import { StateChip } from "@/components/StateChip";
@@ -140,6 +141,7 @@ function SendSheet({ wallet, onClose }: { wallet: Wallet; onClose: () => void })
   const toast = useToast();
   const signer = useWalletSigner();
   const queryClient = useQueryClient();
+  const { active: warped } = useWarp();
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -213,8 +215,13 @@ function SendSheet({ wallet, onClose }: { wallet: Wallet; onClose: () => void })
       <p className="mb-4 text-xs text-muted">
         Available {fmtUnits(wallet.balance)} · gasless, relayed by Thassa.
       </p>
-      <button onClick={send} disabled={busy} className="btn-brand w-full !py-3">
-        {busy ? <Spinner size={16} /> : "Sign & send"}
+      <button
+        onClick={send}
+        disabled={busy || warped}
+        title={warped ? "read-only (warp)" : undefined}
+        className="btn-brand w-full !py-3"
+      >
+        {busy ? <Spinner size={16} /> : warped ? "Read-only (warp)" : "Sign & send"}
       </button>
     </Sheet>
   );

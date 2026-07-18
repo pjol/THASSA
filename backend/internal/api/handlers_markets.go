@@ -41,7 +41,13 @@ func (s *Server) handleSearchMarkets(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "failed to search markets")
 		return
 	}
-	respond.JSON(w, http.StatusOK, map[string]any{"markets": markets})
+	// Stored generation candidates (from every user's past generations) that
+	// nobody has started yet — the client tags these "start market".
+	generated, err := s.db.SearchGeneratedCandidates(r.Context(), q, 5)
+	if err != nil {
+		generated = []structs.GeneratedCandidate{} // best-effort side list
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"markets": markets, "generated": generated})
 }
 
 type generateRequest struct {
@@ -187,6 +193,13 @@ func (s *Server) handleCreateMarket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	srcRefs := toStructRefs(sq.Sources)
+	// Expiration default: unsettled markets auto-resolve 50/50 at expiry.
+	// Sports questions are game-bound (short horizon); everything else gets a
+	// month before the 50/50 backstop kicks in.
+	expiresAt := time.Now().AddDate(0, 0, 30)
+	if sq.Category == "sports" {
+		expiresAt = time.Now().AddDate(0, 0, 7)
+	}
 	marketID, err := s.db.CreateMarket(r.Context(), store.CreateMarketParams{
 		CreatorID:       id.UserID,
 		Title:           req.Title,
@@ -195,11 +208,15 @@ func (s *Server) handleCreateMarket(w http.ResponseWriter, r *http.Request) {
 		Category:        sq.Category,
 		Rule:            sq.Rule,
 		Sources:         srcRefs,
+		ExpiresAt:       &expiresAt,
 	})
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to create market")
 		return
 	}
+	// If this market came from a stored generation candidate, stamp it as
+	// started so search stops suggesting it (best-effort, matched by question).
+	s.db.MarkGeneratedCandidateStarted(r.Context(), question, marketID)
 
 	created, err := s.insertOrder(r, id, marketID, req.InitialOrder, order, authp, true)
 	if err != nil {

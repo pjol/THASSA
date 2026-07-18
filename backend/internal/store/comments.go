@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -43,41 +44,71 @@ func (s *Store) MarketComments(ctx context.Context, viewerID, marketID uuid.UUID
 }
 
 // CreateComment attaches a comment to a post OR a market (exactly one),
-// optionally as a reply via parentID. Returns the created comment.
-func (s *Store) CreateComment(ctx context.Context, authorID uuid.UUID, postID, marketID, parentID *uuid.UUID, body string) (*structs.Comment, error) {
+// optionally as a reply via parentID. @-mentions (spec §7d.2) are stored
+// verbatim in comments.mentions and normalized into comment_mentions (deduped).
+// Returns the created comment (with mentions resolved to current profiles) and
+// the deduped set of mentioned user ids (for post.mention notifications).
+func (s *Store) CreateComment(ctx context.Context, authorID uuid.UUID, postID, marketID, parentID *uuid.UUID, body string, mentions []structs.MentionInput) (*structs.Comment, []uuid.UUID, error) {
 	if (postID == nil) == (marketID == nil) {
-		return nil, errors.New("comment must attach to exactly one of post or market")
+		return nil, nil, errors.New("comment must attach to exactly one of post or market")
 	}
+	if mentions == nil {
+		mentions = []structs.MentionInput{}
+	}
+	mentionsJSON, err := json.Marshal(mentions)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer tx.Rollback(ctx)
 
 	var c structs.Comment
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO comments (post_id, market_id, author_id, parent_id, body)
-		VALUES ($1,$2,$3,$4,$5)
+		INSERT INTO comments (post_id, market_id, author_id, parent_id, body, mentions)
+		VALUES ($1,$2,$3,$4,$5,$6)
 		RETURNING id, post_id, market_id, parent_id, body, like_count, created_at`,
-		postID, marketID, authorID, parentID, body,
+		postID, marketID, authorID, parentID, body, mentionsJSON,
 	).Scan(&c.ID, &c.PostID, &c.MarketID, &c.ParentID, &c.Body, &c.LikeCount, &c.CreatedAt); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if postID != nil {
 		if _, err := tx.Exec(ctx,
 			`UPDATE posts SET comment_count=comment_count+1, updated_at=now() WHERE id=$1`, *postID); err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+	}
+	seen := map[uuid.UUID]bool{}
+	mentionedIDs := []uuid.UUID{}
+	for _, m := range mentions {
+		if m.UserID == uuid.Nil || seen[m.UserID] {
+			continue
+		}
+		seen[m.UserID] = true
+		mentionedIDs = append(mentionedIDs, m.UserID)
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO comment_mentions (comment_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+			c.ID, m.UserID); err != nil {
+			return nil, nil, err
 		}
 	}
 	if err := tx.QueryRow(ctx,
 		`SELECT `+userBriefCols+` FROM users u WHERE u.id=$1`, authorID,
 	).Scan(&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.AvatarURL); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &c, nil
+	c.Mentions = []structs.Mention{}
+	comments := []structs.Comment{c}
+	if err := s.attachCommentMentions(ctx, comments); err != nil {
+		return nil, nil, err
+	}
+	return &comments[0], mentionedIDs, nil
 }
 
 // DeleteComment removes the caller's own comment.
@@ -96,6 +127,47 @@ func (s *Store) DeleteComment(ctx context.Context, authorID, commentID uuid.UUID
 	return true, nil
 }
 
+// attachCommentMentions resolves every comment's @-mentions to the mentioned
+// users' CURRENT profile (spec §7d.2: rename-safe) in a single batched query
+// joining comments.mentions → users. One query per page (no N+1). Mentions
+// whose user no longer exists are dropped by the join.
+func (s *Store) attachCommentMentions(ctx context.Context, comments []structs.Comment) error {
+	if len(comments) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, len(comments))
+	idx := map[uuid.UUID]int{}
+	for i, c := range comments {
+		ids[i] = c.ID
+		idx[c.ID] = i
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.id,
+		       (m.value->>'user_id')::uuid, (m.value->>'start')::int, (m.value->>'len')::int,
+		       u.username, u.display_name, u.avatar_url
+		FROM comments c
+		CROSS JOIN LATERAL jsonb_array_elements(c.mentions) AS m(value)
+		JOIN users u ON u.id = (m.value->>'user_id')::uuid
+		WHERE c.id = ANY($1)
+		ORDER BY (m.value->>'start')::int`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid uuid.UUID
+		var mn structs.Mention
+		if err := rows.Scan(&cid, &mn.UserID, &mn.Start, &mn.Len,
+			&mn.Username, &mn.DisplayName, &mn.AvatarURL); err != nil {
+			return err
+		}
+		if i, ok := idx[cid]; ok {
+			comments[i].Mentions = append(comments[i].Mentions, mn)
+		}
+	}
+	return rows.Err()
+}
+
 func (s *Store) pageComments(ctx context.Context, sql string, limit int, args ...any) ([]structs.Comment, *string, error) {
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
@@ -110,9 +182,13 @@ func (s *Store) pageComments(ctx context.Context, sql string, limit int, args ..
 			&c.Body, &c.LikeCount, &c.LikedByMe, &c.CreatedAt); err != nil {
 			return nil, nil, err
 		}
+		c.Mentions = []structs.Mention{}
 		out = append(out, c)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	if err := s.attachCommentMentions(ctx, out); err != nil {
 		return nil, nil, err
 	}
 	var next *string

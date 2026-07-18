@@ -49,7 +49,9 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusNotFound, "market not found")
 		return
 	}
-	if chainMarketID == nil || (status != "OPEN" && status != "MATCHED") {
+	// SETTLING stays open for trading — orders keep matching while the
+	// oracle resolves; only PENDING/SETTLED/VOID block.
+	if chainMarketID == nil || (status != "OPEN" && status != "MATCHED" && status != "SETTLING") {
 		respond.Error(w, http.StatusConflict, "market is not accepting orders")
 		return
 	}

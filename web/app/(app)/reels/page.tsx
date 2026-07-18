@@ -12,8 +12,10 @@ import { Avatar } from "@/components/Avatar";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { Sheet } from "@/components/Sheet";
 import { Comments } from "@/components/Comments";
+import { renderCaption } from "@/components/Caption";
 import { EmptyState } from "@/components/EmptyState";
 import { CommentIcon, HeartIcon, ReelsIcon, ShareIcon, Spinner } from "@/components/icons";
+import { LogoSpinner } from "@/components/LogoSpinner";
 import { fmtCount } from "@/lib/format";
 import { useToast } from "@/providers/ToastProvider";
 import type { Post, PostsPage } from "@/lib/types";
@@ -60,7 +62,7 @@ export default function ReelsPage() {
   if (query.isLoading) {
     return (
       <div className="flex h-[100dvh] items-center justify-center bg-black">
-        <Spinner size={28} className="text-white/70" />
+        <LogoSpinner size={48} />
       </div>
     );
   }
@@ -153,7 +155,9 @@ function ReelSlide({ reel, active }: { reel: Post; active: boolean }) {
             <span className="text-sm font-bold">{reel.author.username}</span>
           </Link>
           {reel.caption && (
-            <p className="mt-2 line-clamp-2 pr-16 text-sm text-white/90">{reel.caption}</p>
+            <p className="mt-2 line-clamp-2 pr-16 text-sm text-white/90">
+              {renderCaption(reel.caption, reel.mentions)}
+            </p>
           )}
         </div>
 

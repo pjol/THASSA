@@ -10,8 +10,11 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useSession } from "@/providers/SessionProvider";
 import { useTheme, type ThemePref } from "@/providers/ThemeProvider";
 import { useToast } from "@/providers/ToastProvider";
+import { useWarp } from "@/providers/WarpProvider";
 import { Avatar } from "@/components/Avatar";
 import { DeveloperKeys } from "@/components/DeveloperKeys";
+import { AdminWarp } from "@/components/AdminWarp";
+import { AdminReservations } from "@/components/AdminReservations";
 import { CameraIcon, Spinner } from "@/components/icons";
 
 export default function SettingsPage() {
@@ -20,6 +23,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const { logout } = useAuth();
   const { me, refresh } = useSession();
+  const { active: warped } = useWarp();
   const { pref, setPref } = useTheme();
 
   const [username, setUsername] = useState("");
@@ -222,6 +226,15 @@ export default function SettingsPage() {
 
       {/* developer: API keys (spec §6.9) */}
       <DeveloperKeys />
+
+      {/* admin: warp / impersonation (spec §7c) — real admins only, and hidden
+          while already warped (warp can't escalate into another admin). */}
+      {me?.is_admin && !warped && (
+        <>
+          <AdminWarp />
+          <AdminReservations />
+        </>
+      )}
 
       <button
         onClick={async () => {

@@ -47,7 +47,7 @@ export default function DocsHome() {
         Everything the app can do with markets, your code can do too — the app
         and the API share <strong>one user base, one order book, and one
         non-custodial signing model</strong>. These docs cover the protocol
-        (contracts, settlement, fees) and the Kalshi-style trading API.
+        (contracts, settlement, fees) and the full trading API.
       </p>
 
       <h2 id="quickstart">30-second quickstart</h2>
@@ -88,7 +88,7 @@ export default function DocsHome() {
           funds.
         </li>
         <li>
-          <strong>One-word states, everywhere.</strong> Markets are{" "}
+          <strong>A small, fixed set of states.</strong> Markets are{" "}
           <code>PENDING</code> · <code>OPEN</code> · <code>MATCHED</code> ·{" "}
           <code>SETTLING</code> · <code>SETTLED</code> · <code>VOID</code>;
           orders are <code>SIGNING</code> · <code>QUEUED</code> ·{" "}

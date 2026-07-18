@@ -14,12 +14,22 @@ export function Logo({ size = 28, color }: { size?: number; color?: string }) {
   return <SvgXml xml={tint(color ?? t.text)} width={size} height={size} />;
 }
 
-export function LogoWordmark({ size = 28, color }: { size?: number; color?: string }) {
+export function LogoWordmark({
+  size = 28,
+  color,
+  markColor,
+}: {
+  size?: number;
+  color?: string;
+  // Optional accent color for just the mark (wordmark text keeps `color`),
+  // e.g. the brand-blue treatment used in the Home header.
+  markColor?: string;
+}) {
   const t = useTheme();
   const c = color ?? t.text;
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Logo size={size} color={c} />
+      <Logo size={size} color={markColor ?? c} />
       <Text style={{ color: c, fontWeight: "800", fontSize: size * 0.82, letterSpacing: -0.5 }}>
         Thassa
       </Text>

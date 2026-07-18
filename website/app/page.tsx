@@ -58,9 +58,9 @@ export default function Home() {
               </h1>
               <p className="anim-rise-2 mt-6 max-w-[500px] text-[17px] leading-relaxed text-muted">
                 Thassa is a feed where every post can carry a prediction
-                market. Back your take with one signature — no gas, no
-                bridges, no custody — and let the oracle settle it against
-                sources everyone can see.
+                market. Back your take with a single tap — no gas fees, no
+                crypto hoops, your money stays yours — and every market
+                settles in the open, against sources everyone can see.
               </p>
               <div className="anim-rise-3 mt-9 flex flex-wrap gap-3.5">
                 <a href={APP_URL} className="group inline-flex items-center gap-2.5 rounded-xl bg-brand px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-12px_rgba(48,124,222,0.7)] transition hover:-translate-y-0.5 hover:bg-brand-deep">
@@ -74,9 +74,9 @@ export default function Home() {
                 </Link>
               </div>
               <div className="anim-rise-4 mt-11 flex flex-wrap gap-x-7 gap-y-2 border-t border-dashed hairline pt-4 font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">
-                <span><b className="font-semibold text-muted">Gasless</b> — one signature</span>
-                <span><b className="font-semibold text-muted">$1</b> shares, cent-priced</span>
-                <span><b className="font-semibold text-muted">PoA</b>-settled oracle</span>
+                <span><b className="font-semibold text-muted">No gas fees</b> — one signature</span>
+                <span><b className="font-semibold text-muted">$1</b> shares, priced in cents</span>
+                <span><b className="font-semibold text-muted">Settled</b> against public sources</span>
               </div>
             </div>
             <div className="anim-rise-2 relative hidden justify-center md:flex">
@@ -99,20 +99,20 @@ export default function Home() {
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[560px] text-[16.5px] leading-relaxed text-muted">
                 Posts, stories, reels, DMs — a social feed you already know,
-                with a Kalshi-style twist: attach a binary YES/NO market to
-                anything you share. Friends take the other side straight from
-                the post card. Shares are priced in cents, pay out $1, and
-                trade on a real order book with price-time priority.
+                with one twist: attach a YES/NO market to anything you share.
+                Friends take the other side straight from the post card.
+                Shares are priced in cents, pay out $1 if you&rsquo;re right, and
+                trade on a real order book.
               </p>
               <ul className="fx fx-d2 mt-7 grid max-w-[540px] gap-3 text-[14.5px] text-muted">
                 <li className="flex gap-3">
                   <span className="mt-0.5 text-brand">▸</span>
-                  Create a market from any post — free, with a $1 minimum
-                  opening bet that makes you the first maker.
+                  Create a market from any post — free. A $1 opening bet gets
+                  it started.
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-0.5 text-brand">▸</span>
-                  One-word states everywhere:{" "}
+                  Always know where a market stands:{" "}
                   <span className="inline-flex flex-wrap items-center gap-1.5 align-middle">
                     <StateChip state="OPEN" />
                     <StateChip state="MATCHED" />
@@ -160,17 +160,17 @@ export default function Home() {
                     {
                       n: "1",
                       t: "You sign once",
-                      d: "An EIP-3009 payment authorization whose nonce is your order's EIP-712 digest — payment and order, one signature.",
+                      d: "One signature approves your order and its payment together — there's nothing else to confirm.",
                     },
                     {
                       n: "2",
-                      t: "The relayer batches",
-                      d: "Signed orders queue and land onchain in bundles via placeOrdersBatch. The relayer pays the gas — you never do.",
+                      t: "Thassa submits it",
+                      d: "Your order is bundled with others and placed onchain for you. Thassa pays the gas — you never do.",
                     },
                     {
                       n: "3",
                       t: "The book matches",
-                      d: "Best crossing levels fill at the maker's price, price-time priority. The rest rests on the book.",
+                      d: "You fill at the best available price — never worse than your limit. Whatever doesn't fill waits on the book.",
                     },
                   ].map((s, i) => (
                     <div key={s.n} className="relative flex gap-4 pb-6 last:pb-0">
@@ -197,12 +197,14 @@ export default function Home() {
                 One signature. <span className="text-gradient-brand">Zero gas.</span>
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[540px] text-[16.5px] leading-relaxed text-muted">
-                Orders are EIP-712 typed data, funded by an EIP-3009{" "}
-                <code className="rounded bg-fg/5 px-1.5 py-0.5 font-mono text-[13px]">receiveWithAuthorization</code>{" "}
-                that pays the markets contract directly. The trick: the
-                payment&rsquo;s nonce <em>is</em> the order&rsquo;s digest, so a single
-                signature commits to both. Non-custodial the whole way — the
-                platform never holds your keys or your funds.
+                No deposit step, no gas prompts, nothing to bridge. Your money
+                moves straight from your own wallet into the market when you
+                trade — Thassa never holds your keys or your funds. One
+                signature approves the order and its payment together, so
+                there&rsquo;s exactly one thing to confirm.{" "}
+                <Link href="/docs/protocol/gasless" className="font-medium text-brand hover:underline">
+                  Curious how it works? Read the docs.
+                </Link>
               </p>
               <div className="fx fx-d2 mt-8 grid max-w-[540px] grid-cols-3 divide-x divide-dashed hairline border-y border-dashed hairline">
                 {[
@@ -232,29 +234,28 @@ export default function Home() {
                 <span className="text-gradient-brand">named sources</span>.
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[560px] text-[16.5px] leading-relaxed text-bg/65">
-                Every market stores its settlement query onchain as public,
-                structured JSON — question, category, resolution rule, and the
-                exact sources that decide it. The oracle node fetches those
-                sources itself, adjudicates only from the fetched evidence,
-                and signs the outcome; a proof-of-authority verifier checks
-                the signature onchain before the market settles.
+                Every market declares how it will settle before a single
+                share trades — the question, the resolution rule, and the
+                exact sources that decide it, published for anyone to
+                inspect. When it&rsquo;s time, Thassa checks those sources and
+                nothing pays out until the result is verified onchain.
               </p>
               <ul className="fx fx-d2 mt-7 grid max-w-[560px] gap-3 text-[14.5px] text-bg/65">
                 <li className="flex gap-3">
                   <span className="mt-0.5 text-brand-soft">▸</span>
                   <span>
-                    <b className="font-semibold text-bg">Numeric data → one named source.</b>{" "}
-                    Sports settle on ESPN, weather on NWS/NOAA, crypto prices
-                    on Coinbase spot — disclosed publicly, every time.
+                    <b className="font-semibold text-bg">Facts and figures settle on one named source.</b>{" "}
+                    Sports on ESPN, weather on NWS/NOAA, crypto prices on
+                    Coinbase — disclosed publicly, every time.
                   </span>
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-0.5 text-brand-soft">▸</span>
                   <span>
-                    <b className="font-semibold text-bg">Boolean news → majority concurrence.</b>{" "}
-                    A panel of NYT, WSJ, Reuters, AP, and BBC each yields an
-                    independent verdict; a majority must concur or no update
-                    is produced.
+                    <b className="font-semibold text-bg">News settles by majority.</b>{" "}
+                    NYT, WSJ, Reuters, AP, and BBC each give an independent
+                    verdict — and a majority must agree before the market
+                    settles.
                   </span>
                 </li>
               </ul>
@@ -262,7 +263,7 @@ export default function Home() {
             <div className="fx-scale fx-d1 mx-auto w-full max-w-[400px] rounded-3xl border border-bg/15 bg-bg/[0.04] p-6 backdrop-blur">
               <div className="flex items-center justify-between">
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-bg/50">
-                  Majority-concurrence rule
+                  Majority rule
                 </p>
                 <StateChip state="SETTLING" />
               </div>
@@ -278,11 +279,11 @@ export default function Home() {
               </div>
               <div className="mt-4 rounded-xl border border-yes/30 bg-yes/10 px-4 py-3">
                 <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-yes">
-                  4 of 5 concur → settles YES
+                  4 of 5 agree — settles YES
                 </p>
                 <p className="mt-1 text-[12px] leading-snug text-bg/60">
-                  No majority? No update. The market stays SETTLING and the
-                  node retries later.
+                  No majority? No settlement. The market stays SETTLING and
+                  Thassa checks again later.
                 </p>
               </div>
             </div>
@@ -298,14 +299,11 @@ export default function Home() {
                 Your markets <span className="text-gradient-brand">pay you</span>.
               </h2>
               <p className="fx fx-d1 mt-5 max-w-[540px] text-[16.5px] leading-relaxed text-muted">
-                Takers pay a small fee on each match —{" "}
-                <code className="rounded bg-fg/5 px-1.5 py-0.5 font-mono text-[13px]">
-                  ceil(7% × shares × p × (100−p) / 10000)
-                </code>{" "}
-                — highest at 50¢, vanishing at the extremes. Makers pay
-                nothing. Of every fee collected, 10% accrues to the market&rsquo;s
-                creator and 5% to the post that routed the trade. Share a hot
-                market and the flow pays you back.
+                Takers pay a small fee on each trade — at most 1.75¢ per
+                share, shrinking to nearly nothing when the odds are
+                lopsided. Makers pay nothing. Of every fee collected, 10%
+                goes to the market&rsquo;s creator and 5% to the post that routed
+                the trade. Share a hot market and the flow pays you back.
               </p>
               <p className="fx fx-d2 mt-4 max-w-[540px] text-[14.5px] leading-relaxed text-muted">
                 Creating a market is free — just a $1 minimum opening bet.
@@ -361,10 +359,10 @@ export default function Home() {
               <span className="text-gradient-brand">API</span>.
             </h2>
             <p className="fx fx-d1 mx-auto mt-5 max-w-[560px] text-[16.5px] leading-relaxed text-muted">
-              The same user base, the same order book, the same non-custodial
-              signing — over a Kalshi-style trading API. Mint a key in the
-              app, stream the book over WebSocket, and place one-signature
-              orders from code.
+              Everything the app can do, your code can do — same accounts,
+              same order book, same one-signature orders. Create a key in
+              the app, stream live prices over WebSocket, and trade from
+              code.
             </p>
             <div className="fx fx-d2 mt-9 flex flex-wrap justify-center gap-3.5">
               <Link href="/docs" className="group inline-flex items-center gap-2.5 rounded-xl bg-brand px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_14px_34px_-12px_rgba(48,124,222,0.7)] transition hover:-translate-y-0.5 hover:bg-brand-deep">

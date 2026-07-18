@@ -11,13 +11,14 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams, useNavigation } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Animated } from "react-native";
 import { VideoPlayer } from "../../components/VideoPlayer";
 import { Avatar } from "../../components/ui";
 import { Loading } from "../../components/states";
 import { useApi } from "../../lib/api";
+import { bestImageUrl } from "../../lib/media";
 import { tap } from "../../lib/haptics";
 import { useSession } from "../../lib/session";
 import { radius, space, useTheme } from "../../lib/theme";
@@ -271,7 +272,9 @@ function MessageBubble({
   onReact: (emoji: string) => void;
 }) {
   const t = useTheme();
+  const router = useRouter();
   const reactions = Object.entries(message.reactions ?? {}).filter(([, n]) => n > 0);
+  const sp = message.shared_post;
   return (
     <View style={{ paddingHorizontal: space.md, marginVertical: 3, alignItems: mine ? "flex-end" : "flex-start" }}>
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, maxWidth: "82%" }}>
@@ -292,9 +295,44 @@ function MessageBubble({
             message.media.kind === "video" ? (
               <VideoPlayer media={message.media} active={false} muted style={{ width: 220, height: 280 }} />
             ) : (
-              <Image source={{ uri: message.media.url }} style={{ width: 220, height: 280 }} contentFit="cover" />
+              <Image source={{ uri: bestImageUrl(message.media, 220) }} style={{ width: 220, height: 280 }} contentFit="cover" />
             )
           ) : null}
+
+          {/* Shared post card — tappable, opens the post. */}
+          {sp ? (
+            <Pressable onPress={() => router.push(`/post/${sp.id}` as never)} style={{ width: 240 }}>
+              {sp.thumb_url ? (
+                <Image source={{ uri: sp.thumb_url }} style={{ width: 240, height: 200 }} contentFit="cover" />
+              ) : null}
+              <View style={{ paddingHorizontal: 12, paddingVertical: 9, gap: 3 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Avatar url={sp.author.avatar_url} size={18} />
+                  <Text style={{ color: mine ? "#fff" : t.text, fontWeight: "800", fontSize: 13 }}>
+                    {sp.author.username}
+                  </Text>
+                </View>
+                {sp.caption ? (
+                  <Text numberOfLines={2} style={{ color: mine ? "rgba(255,255,255,0.85)" : t.textDim, fontSize: 12.5 }}>
+                    {sp.caption}
+                  </Text>
+                ) : null}
+                {sp.market_title ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <Ionicons name="stats-chart" size={12} color={mine ? "#fff" : t.blue} />
+                    <Text numberOfLines={1} style={{ color: mine ? "#fff" : t.blue, fontSize: 12, fontWeight: "700" }}>
+                      {sp.market_title}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </Pressable>
+          ) : message.post_id && !sp ? (
+            <Text style={{ color: mine ? "rgba(255,255,255,0.8)" : t.textFaint, fontSize: 13, fontStyle: "italic", paddingHorizontal: 14, paddingVertical: 9 }}>
+              Post unavailable
+            </Text>
+          ) : null}
+
           {message.body ? (
             <Text style={{ color: mine ? "#fff" : t.text, fontSize: 15, lineHeight: 20, paddingHorizontal: 14, paddingVertical: 9 }}>
               {message.body}

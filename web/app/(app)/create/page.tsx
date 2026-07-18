@@ -11,12 +11,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useApi, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { useTrading } from "@/lib/trading";
 import { useToast } from "@/providers/ToastProvider";
+import { useWarp } from "@/providers/WarpProvider";
 import { AttachMarket, type MarketAttachment } from "@/components/AttachMarket";
+import { MentionTextarea } from "@/components/MentionTextarea";
 import { StateChip, creatorMicrocopy } from "@/components/StateChip";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { CloseIcon, ImageIcon, Spinner } from "@/components/icons";
 import { escrowUnits, unitsToDollars } from "@/lib/signing";
-import type { Market, MarketStatus, MediaItem, Post } from "@/lib/types";
+import type {
+  Market,
+  MarketStatus,
+  MediaItem,
+  MentionInput,
+  Post,
+} from "@/lib/types";
 
 interface Upload {
   key: string;
@@ -32,11 +40,15 @@ export default function CreatePage() {
   const trading = useTrading();
   const toast = useToast();
   const router = useRouter();
+  const { active: warped } = useWarp();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [caption, setCaption] = useState("");
+  // @-mentions recorded in the caption, re-derived on every edit so offsets
+  // stay correct (spec §7d.2); sent alongside the caption on submit.
+  const [mentions, setMentions] = useState<MentionInput[]>([]);
   const [attachment, setAttachment] = useState<MarketAttachment | null>(null);
   const [posting, setPosting] = useState(false);
   // Stable key per logical publish: retrying after an error can't double-post.
@@ -90,6 +102,7 @@ export default function CreatePage() {
   const canPost =
     !posting &&
     !uploadsPending &&
+    !warped && // read-only while warped (spec §7c.2)
     attachmentValid &&
     (mediaIds.length > 0 || caption.trim().length > 0);
 
@@ -122,10 +135,18 @@ export default function CreatePage() {
       }
 
       setProgress({ label: "Publishing your post", state: "PENDING" });
+      // Mention offsets index the raw caption; the wire caption is trimmed, so
+      // shift by the leading-whitespace amount and drop any now out of bounds.
+      const finalCaption = caption.trim();
+      const leadTrim = caption.length - caption.trimStart().length;
+      const finalMentions = mentions
+        .map((m) => ({ ...m, start: m.start - leadTrim }))
+        .filter((m) => m.start >= 0 && m.start + m.len <= finalCaption.length);
       const res = await api.post<{ post: Post }>(
         "/v1/posts",
         {
-          caption: caption.trim() || null,
+          caption: finalCaption || null,
+          mentions: finalMentions,
           media_ids: mediaIds,
           market_attach: marketAttach,
           market_create: marketCreate,
@@ -172,8 +193,13 @@ export default function CreatePage() {
     <div className="mx-auto w-full max-w-[560px] px-4 pb-10 pt-4 md:pt-8">
       <div className="mb-5 flex items-center justify-between">
         <h1 className="text-xl font-extrabold tracking-tight text-fg">New post</h1>
-        <button onClick={submit} disabled={!canPost} className="btn-brand !px-6">
-          {posting ? <Spinner size={16} /> : "Post"}
+        <button
+          onClick={submit}
+          disabled={!canPost}
+          title={warped ? "read-only (warp)" : undefined}
+          className="btn-brand !px-6"
+        >
+          {posting ? <Spinner size={16} /> : warped ? "Read-only (warp)" : "Post"}
         </button>
       </div>
 
@@ -259,14 +285,17 @@ export default function CreatePage() {
         <label htmlFor="caption" className="mb-1.5 block text-sm font-bold text-fg">
           Caption
         </label>
-        <textarea
+        <MentionTextarea
           id="caption"
           className="input resize-none"
           rows={3}
           maxLength={2200}
-          placeholder="Write a caption…"
+          placeholder="Write a caption… use @ to mention people"
           value={caption}
-          onChange={(e) => setCaption(e.target.value)}
+          onChange={(text, m) => {
+            setCaption(text);
+            setMentions(m);
+          }}
         />
       </div>
 

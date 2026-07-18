@@ -98,7 +98,7 @@ func (s *Server) handleTradeMarkets(w http.ResponseWriter, r *http.Request) {
 		respond.JSON(w, http.StatusOK, map[string]any{"markets": markets})
 		return
 	}
-	markets, err := s.db.ExploreMarkets(r.Context(), parseLimit(r, 25), 0)
+	markets, err := s.db.ExploreMarkets(r.Context(), parseLimit(r, 25), 0, "all", "trending")
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to list markets")
 		return

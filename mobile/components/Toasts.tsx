@@ -57,10 +57,40 @@ function toastForNotification(n: AppNotification): Omit<Toast, "id"> | null {
         icon: "heart",
         href: n.payload.post_id ? `/post/${n.payload.post_id}` : undefined,
       };
+    case "post.mention":
+      return {
+        title: `${who} mentioned you`,
+        body: n.payload.body,
+        icon: "at",
+        href: n.payload.post_id
+          ? `/post/${n.payload.post_id}`
+          : n.payload.market_id
+            ? `/market/${n.payload.market_id}`
+            : undefined,
+      };
+    case "position.swing":
+      return {
+        title: "Your position moved sharply",
+        body: n.payload.body,
+        icon: "trending-up",
+        href: n.payload.market_id ? `/market/${n.payload.market_id}` : undefined,
+      };
+    case "following.large_entry":
+      return {
+        title: `${who} placed a big bet`,
+        body: n.payload.body,
+        icon: "rocket",
+        href: n.payload.market_id
+          ? `/market/${n.payload.market_id}`
+          : n.payload.post_id
+            ? `/post/${n.payload.post_id}`
+            : undefined,
+      };
     case "follow.request":
       return { title: `${who} requested to follow you`, icon: "person-add", href: "/notifications" };
+    case "follow.new":
     case "follow":
-      return { title: `${who} started following you`, icon: "person-add", href: "/notifications" };
+      return { title: `${who} started following you`, icon: "person-add", href: n.payload.user?.username ? `/user/${n.payload.user.username}` : "/notifications" };
     default:
       return n.payload.title ? { title: n.payload.title, body: n.payload.body, icon: "notifications" } : null;
   }

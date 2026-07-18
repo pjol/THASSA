@@ -2,7 +2,8 @@ import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { ProfileView } from "../../components/ProfileView";
-import { ErrorState, Loading } from "../../components/states";
+import { ProfileSkeleton } from "../../components/skeletons";
+import { ErrorState } from "../../components/states";
 import { useApi } from "../../lib/api";
 import { useSession } from "../../lib/session";
 import { useTheme } from "../../lib/theme";
@@ -18,13 +19,13 @@ export default function MyProfile() {
   const q = useQuery({
     queryKey: ["profile", me?.username],
     enabled: !!me?.username,
-    queryFn: () => api.get<UserProfile>(`/v1/users/${me!.username}`),
+    queryFn: () => api.get<{ user: UserProfile }>(`/v1/users/${me!.username}`).then((r) => r.user),
   });
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
       {q.isLoading || !me ? (
-        <Loading />
+        <ProfileSkeleton />
       ) : q.isError || !q.data ? (
         <ErrorState onRetry={() => q.refetch()} />
       ) : (

@@ -17,11 +17,14 @@
 #   ./boot.sh --no-web       # skip the web app
 #   ./boot.sh --no-node      # skip the oracle node
 #   ./boot.sh --no-backend   # skip the backend API
+#   ./boot.sh --no-seed      # don't seed example data (and don't tear it down)
 #
-# Only PRIVY_APP_ID and OPENAI_API_KEY need to be set by hand (.env.boot);
+# On boot the DB is seeded with example data for every feature; on exit that
+# seeded data is torn down (targeted). Only PRIVY_APP_ID and OPENAI_API_KEY need
+# to be set by hand (.env.boot);
 # everything else is auto-filled with working dev defaults.
 #
-# Ctrl-C stops everything (docker infra stays up; `docker compose down` stops it).
+# Ctrl-C stops everything, including the docker infra (data volumes persist).
 
 set -uo pipefail
 
@@ -30,13 +33,14 @@ cd "$ROOT"
 LOG_DIR="$ROOT/logs"
 mkdir -p "$LOG_DIR"
 
-RUN_BACKEND=1 RUN_NODE=1 RUN_WEB=1 RUN_MOBILE=1
+RUN_BACKEND=1 RUN_NODE=1 RUN_WEB=1 RUN_MOBILE=1 RUN_SEED=1
 for arg in "$@"; do
   case "$arg" in
     --no-mobile)  RUN_MOBILE=0 ;;
     --no-web)     RUN_WEB=0 ;;
     --no-node)    RUN_NODE=0 ;;
     --no-backend) RUN_BACKEND=0 ;;
+    --no-seed)    RUN_SEED=0 ;;
     -h|--help)    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown arg: $arg (try --help)"; exit 1 ;;
   esac
@@ -91,7 +95,18 @@ cleanup() {
     pids=$(lsof -ti tcp:"$p" 2>/dev/null || true)
     [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null || true
   done
-  c_green "Done. (docker infra left running — 'docker compose down' to stop it)"
+  # Tear down the seeded example data while the DB is still up (targeted delete
+  # of exactly what the seed inserted; leaves any real data + the volume intact).
+  if [[ "${RUN_SEED:-1}" -eq 1 ]] && docker info >/dev/null 2>&1; then
+    c_yellow "  removing seeded example data…"
+    ( cd "$ROOT/backend" && env ${BACKEND_ENV[@]+"${BACKEND_ENV[@]}"} SEED_SKIP_CHAIN=true go run ./cmd/seed --down >>"$LOG_DIR/seed.log" 2>&1 ) || true
+  fi
+  # Bring the docker infra down too (named volumes persist, so data survives).
+  if docker info >/dev/null 2>&1; then
+    c_yellow "  stopping docker infra (postgres + minio)…"
+    ( cd "$ROOT" && docker compose down --remove-orphans >/dev/null 2>&1 ) || true
+  fi
+  c_green "Done. (data volumes preserved — 'docker compose down -v' to wipe them)"
   exit 0
 }
 trap cleanup INT TERM EXIT
@@ -159,6 +174,11 @@ WEB_PORT="${WEB_PORT:-3000}"
 FUND_ETH_AMOUNT="${FUND_ETH_AMOUNT:-100}"
 FUND_TOKEN_AMOUNT="${FUND_TOKEN_AMOUNT:-10000}"
 PAYMENT_TOKEN_DECIMALS="${PAYMENT_TOKEN_DECIMALS:-6}"
+# Funded keys the seeder uses to deploy on-chain demo markets — default to the
+# standard anvil dev keys 4-9 (distinct from the relayer/node keys) so even an
+# older .env.boot without this var still gets live markets (and never races the
+# relayer's key).
+SEED_FUNDED_KEYS="${SEED_FUNDED_KEYS:-0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a,0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba,0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e,0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356,0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97,0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6}"
 
 # Fallbacks: when a secret isn't set in .env.boot, adopt a value the user
 # already put in a component env file (last non-empty occurrence, so values
@@ -268,6 +288,13 @@ for a in ${EXTRA_ADDRS[@]+"${EXTRA_ADDRS[@]}"}; do
   a="$(echo "$a" | xargs)"
   [[ -n "$a" ]] && ALL_ADDRS+=("$a")
 done
+# The seeder deploys demo markets on-chain from SEED_FUNDED_KEYS — fund those
+# addresses too (gas + payment tokens) so their opening orders go through.
+IFS=',' read -r -a SEED_KEYS <<< "${SEED_FUNDED_KEYS:-}"
+for k in ${SEED_KEYS[@]+"${SEED_KEYS[@]}"}; do
+  k="$(echo "$k" | xargs)"
+  [[ -n "$k" ]] && ALL_ADDRS+=("$(addr_of "$k")")
+done
 WEI_AMOUNT="$(cast to-wei "$FUND_ETH_AMOUNT" ether)"
 for addr in "${ALL_ADDRS[@]}"; do
   cast rpc anvil_setBalance "$addr" "$(cast to-hex "$WEI_AMOUNT")" --rpc-url "$RPC_URL" >/dev/null
@@ -320,23 +347,37 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# 5. Runtime env (defaults injected into service PROCESS env only for keys the
-#    service's own env file doesn't already define — live env files are NEVER
-#    written or modified; the file always wins over an injected default).
+# 5. Runtime env — injected into each service's PROCESS env; the live .env
+#    files are NEVER written or modified.
+#
+#    Two policies (both loaders — godotenv, the node's loadDotEnv, Next, Expo —
+#    let the real environment win over the file, so an injected value overrides
+#    the file and a not-injected key falls back to the file):
+#      force <arr> KEY VAL   — boot-OWNED wiring: always injected, overrides the
+#                              file. Ports (so backend/node never collide), the
+#                              freshly-deployed contract addresses, chain RPC/id,
+#                              and inter-service URLs must be correct every run.
+#      add   <arr> file KEY VAL — user CONFIG: injected only when the file leaves
+#                              KEY unset, so a hand-set value (DATABASE_URL, keys)
+#                              always wins.
 # ----------------------------------------------------------------------------
-c_blue "[5/7] Runtime environment (injecting defaults for unset keys only)"
+c_blue "[5/7] Runtime environment (forcing boot wiring; preserving your config)"
 
 # key_in_file: true if <file> defines <KEY> in a user-authored line. Lines
 # inside a legacy "# >>> thassa-boot >>>" block (written by older boot.sh
-# versions) are ignored, so stale generated addresses don't shadow fresh ones.
+# versions) are ignored, so stale generated values don't shadow fresh ones.
 key_in_file() {
   [[ -f "$1" ]] || return 1
   awk '/# >>> thassa-boot >>>/{skip=1} /# <<< thassa-boot <<</{skip=0; next} !skip' "$1" \
     | grep -qE "^[[:space:]]*(export[[:space:]]+)?$2="
 }
 
-# add <arrayName> <file> <KEY> <VALUE> — append KEY=VALUE to the named array
-# unless the file already defines KEY.
+# force <arrayName> <KEY> <VALUE> — always inject (boot-owned wiring).
+force() {
+  local arr="$1" key="$2" val="$3"
+  eval "$arr+=(\"\$key=\$val\")"
+}
+# add <arrayName> <file> <KEY> <VALUE> — inject only if the file leaves KEY unset.
 add() {
   local arr="$1" file="$2" key="$3" val="$4"
   key_in_file "$file" "$key" && return 0
@@ -348,18 +389,18 @@ add_opt() { [[ -n "$4" ]] && add "$1" "$2" "$3" "$4" || true; }
 DB_URL_DEFAULT="postgres://thassa:thassa@localhost:5432/thassa?sslmode=disable"
 
 BACKEND_ENV=()
-add     BACKEND_ENV backend/.env PORT "$BACKEND_PORT"
-add     BACKEND_ENV backend/.env DATABASE_URL "$DB_URL_DEFAULT"
+force   BACKEND_ENV PORT "$BACKEND_PORT"                              # boot owns the port
+force   BACKEND_ENV CHAIN_RPC_URL "$RPC_URL"
+force   BACKEND_ENV CHAIN_ID "$CHAIN_ID"
+force   BACKEND_ENV PAYMENT_TOKEN_ADDRESS "$PAYMENT_TOKEN_ADDRESS"    # fresh each deploy
+force   BACKEND_ENV PAYMENT_TOKEN_NAME "${PAYMENT_TOKEN_NAME:-MockUSD}"
+force   BACKEND_ENV PAYMENT_TOKEN_VERSION "${PAYMENT_TOKEN_VERSION:-1}"
+force   BACKEND_ENV PAYMENT_TOKEN_DECIMALS "$PAYMENT_TOKEN_DECIMALS"
+force   BACKEND_ENV HUB_ADDRESS "$HUB_ADDRESS"                        # fresh each deploy
+force   BACKEND_ENV MARKETS_CONTRACT_ADDRESS "$MARKETS_CONTRACT_ADDRESS"
+add     BACKEND_ENV backend/.env DATABASE_URL "$DB_URL_DEFAULT"       # your value wins
 add     BACKEND_ENV backend/.env IN_PRODUCTION false
 add     BACKEND_ENV backend/.env REGION local
-add     BACKEND_ENV backend/.env CHAIN_RPC_URL "$RPC_URL"
-add     BACKEND_ENV backend/.env CHAIN_ID "$CHAIN_ID"
-add     BACKEND_ENV backend/.env PAYMENT_TOKEN_ADDRESS "$PAYMENT_TOKEN_ADDRESS"
-add     BACKEND_ENV backend/.env PAYMENT_TOKEN_NAME "${PAYMENT_TOKEN_NAME:-MockUSD}"
-add     BACKEND_ENV backend/.env PAYMENT_TOKEN_VERSION "${PAYMENT_TOKEN_VERSION:-1}"
-add     BACKEND_ENV backend/.env PAYMENT_TOKEN_DECIMALS "$PAYMENT_TOKEN_DECIMALS"
-add     BACKEND_ENV backend/.env HUB_ADDRESS "$HUB_ADDRESS"
-add     BACKEND_ENV backend/.env MARKETS_CONTRACT_ADDRESS "$MARKETS_CONTRACT_ADDRESS"
 add     BACKEND_ENV backend/.env RELAYER_PRIVATE_KEY "$RELAYER_PRIVATE_KEY"
 add     BACKEND_ENV backend/.env S3_ENDPOINT http://localhost:9000
 add     BACKEND_ENV backend/.env S3_REGION us-east-1
@@ -374,33 +415,33 @@ add_opt BACKEND_ENV backend/.env STRIPE_SECRET_KEY "${STRIPE_SECRET_KEY:-}"
 add_opt BACKEND_ENV backend/.env STRIPE_WEBHOOK_SECRET "${STRIPE_WEBHOOK_SECRET:-}"
 
 NODE_ENV_VARS=()
-add     NODE_ENV_VARS node/.env PORT 8090
-add     NODE_ENV_VARS node/.env THASSA_RPC_URL "$RPC_URL"
-add     NODE_ENV_VARS node/.env DEFAULT_CHAIN_ID "$CHAIN_ID"
-add     NODE_ENV_VARS node/.env DEFAULT_THASSA_HUB "$HUB_ADDRESS"
+force   NODE_ENV_VARS PORT 8090                                       # distinct from backend
+force   NODE_ENV_VARS THASSA_RPC_URL "$RPC_URL"
+force   NODE_ENV_VARS DEFAULT_CHAIN_ID "$CHAIN_ID"
+force   NODE_ENV_VARS DEFAULT_THASSA_HUB "$HUB_ADDRESS"               # fresh each deploy
+force   NODE_ENV_VARS NODE_MCP_URL "http://localhost:${BACKEND_PORT}/v1/mcp"
 add     NODE_ENV_VARS node/.env NODE_PRIVATE_KEY "$NODE_PRIVATE_KEY"
 add     NODE_ENV_VARS node/.env AUTO_FULFILL_BIDS true
-add     NODE_ENV_VARS node/.env NODE_MCP_URL "http://localhost:${BACKEND_PORT}/v1/mcp"
 add_opt NODE_ENV_VARS node/.env OPENAI_API_KEY "${OPENAI_API_KEY:-}"
 
 WEB_ENV=()
-add     WEB_ENV web/.env.local NEXT_PUBLIC_API_URL "http://localhost:${BACKEND_PORT}"
-add     WEB_ENV web/.env.local NEXT_PUBLIC_WS_URL "ws://localhost:${BACKEND_PORT}/v1/ws"
-add     WEB_ENV web/.env.local NEXT_PUBLIC_CHAIN_ID "$CHAIN_ID"
-add     WEB_ENV web/.env.local NEXT_PUBLIC_MARKETS_CONTRACT_ADDRESS "$MARKETS_CONTRACT_ADDRESS"
-add     WEB_ENV web/.env.local NEXT_PUBLIC_PAYMENT_TOKEN_ADDRESS "$PAYMENT_TOKEN_ADDRESS"
-add     WEB_ENV web/.env.local NEXT_PUBLIC_PAYMENT_TOKEN_NAME "${PAYMENT_TOKEN_NAME:-MockUSD}"
-add     WEB_ENV web/.env.local NEXT_PUBLIC_PAYMENT_TOKEN_VERSION "${PAYMENT_TOKEN_VERSION:-1}"
-add     WEB_ENV web/.env.local NEXT_PUBLIC_PAYMENT_TOKEN_DECIMALS "$PAYMENT_TOKEN_DECIMALS"
+force   WEB_ENV NEXT_PUBLIC_API_URL "http://localhost:${BACKEND_PORT}"
+force   WEB_ENV NEXT_PUBLIC_WS_URL "ws://localhost:${BACKEND_PORT}/v1/ws"
+force   WEB_ENV NEXT_PUBLIC_CHAIN_ID "$CHAIN_ID"
+force   WEB_ENV NEXT_PUBLIC_MARKETS_CONTRACT_ADDRESS "$MARKETS_CONTRACT_ADDRESS"
+force   WEB_ENV NEXT_PUBLIC_PAYMENT_TOKEN_ADDRESS "$PAYMENT_TOKEN_ADDRESS"
+force   WEB_ENV NEXT_PUBLIC_PAYMENT_TOKEN_NAME "${PAYMENT_TOKEN_NAME:-MockUSD}"
+force   WEB_ENV NEXT_PUBLIC_PAYMENT_TOKEN_VERSION "${PAYMENT_TOKEN_VERSION:-1}"
+force   WEB_ENV NEXT_PUBLIC_PAYMENT_TOKEN_DECIMALS "$PAYMENT_TOKEN_DECIMALS"
 add_opt WEB_ENV web/.env.local NEXT_PUBLIC_PRIVY_APP_ID "${PRIVY_APP_ID:-}"
 
 MOBILE_ENV=()
-add     MOBILE_ENV mobile/.env EXPO_PUBLIC_API_URL "http://localhost:${BACKEND_PORT}"
-add     MOBILE_ENV mobile/.env EXPO_PUBLIC_WS_URL "ws://localhost:${BACKEND_PORT}"
-add     MOBILE_ENV mobile/.env EXPO_PUBLIC_CHAIN_ID "$CHAIN_ID"
-add     MOBILE_ENV mobile/.env EXPO_PUBLIC_MARKETS_CONTRACT_ADDRESS "$MARKETS_CONTRACT_ADDRESS"
-add     MOBILE_ENV mobile/.env EXPO_PUBLIC_PAYMENT_TOKEN_ADDRESS "$PAYMENT_TOKEN_ADDRESS"
-add     MOBILE_ENV mobile/.env EXPO_PUBLIC_PAYMENT_TOKEN_DECIMALS "$PAYMENT_TOKEN_DECIMALS"
+force   MOBILE_ENV EXPO_PUBLIC_API_URL "http://localhost:${BACKEND_PORT}"
+force   MOBILE_ENV EXPO_PUBLIC_WS_URL "ws://localhost:${BACKEND_PORT}"
+force   MOBILE_ENV EXPO_PUBLIC_CHAIN_ID "$CHAIN_ID"
+force   MOBILE_ENV EXPO_PUBLIC_MARKETS_CONTRACT_ADDRESS "$MARKETS_CONTRACT_ADDRESS"
+force   MOBILE_ENV EXPO_PUBLIC_PAYMENT_TOKEN_ADDRESS "$PAYMENT_TOKEN_ADDRESS"
+force   MOBILE_ENV EXPO_PUBLIC_PAYMENT_TOKEN_DECIMALS "$PAYMENT_TOKEN_DECIMALS"
 add_opt MOBILE_ENV mobile/.env EXPO_PUBLIC_PRIVY_APP_ID "${PRIVY_APP_ID:-}"
 add_opt MOBILE_ENV mobile/.env EXPO_PUBLIC_PRIVY_CLIENT_ID "${PRIVY_CLIENT_ID:-}"
 
@@ -425,6 +466,17 @@ if [[ "$RUN_BACKEND" -eq 1 ]]; then
   c_yellow "  backend logs: logs/backend.log"
   wait_for "http://localhost:${BACKEND_PORT}/health" "backend" 60 "$BACKEND_PID" \
     || { c_red "  backend failed — last log lines:"; tail -n 20 "$LOG_DIR/backend.log"; exit 1; }
+
+  # Seed example data for every feature (idempotent; tagged so cleanup can
+  # remove exactly it). Runs with the backend's env (DATABASE_URL etc.).
+  if [[ "$RUN_SEED" -eq 1 ]]; then
+    c_yellow "  seeding example data…"
+    ( cd "$ROOT/backend" && env ${BACKEND_ENV[@]+"${BACKEND_ENV[@]}"} \
+        SEED_SKIP_CHAIN=false SEED_FUNDED_KEYS="${SEED_FUNDED_KEYS:-}" \
+        go run ./cmd/seed >"$LOG_DIR/seed.log" 2>&1 ) \
+      && c_green "  example data seeded (incl. live on-chain markets; logs/seed.log)" \
+      || c_yellow "  seed failed — see logs/seed.log (app still runs)"
+  fi
 fi
 
 if [[ "$RUN_NODE" -eq 1 ]]; then

@@ -158,6 +158,50 @@ func TestParseVerificationKeyRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestEmailClaimParsing(t *testing.T) {
+	priv, pubPEM := genKey(t)
+	v, err := NewPrivyVerifier(testAppID, pubPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name  string
+		mutate func(jwt.MapClaims)
+		want  string
+	}{
+		{"top-level email claim", func(c jwt.MapClaims) { c["email"] = "a@thassa.io" }, "a@thassa.io"},
+		{"email_address claim", func(c jwt.MapClaims) { c["email_address"] = "b@thassa.io" }, "b@thassa.io"},
+		{"linked_accounts array (address)", func(c jwt.MapClaims) {
+			c["linked_accounts"] = []any{
+				map[string]any{"type": "wallet", "address": "0xabc"},
+				map[string]any{"type": "email", "address": "c@thassa.io"},
+			}
+		}, "c@thassa.io"},
+		{"linked_accounts JSON string (email field)", func(c jwt.MapClaims) {
+			c["linked_accounts"] = `[{"type":"email","email":"d@thassa.io"}]`
+		}, "d@thassa.io"},
+		{"no email present", func(c jwt.MapClaims) {}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			claims := baseClaims()
+			c.mutate(claims)
+			got, err := v.Verify(context.Background(), mintToken(t, priv, claims))
+			if err != nil {
+				t.Fatalf("Verify: %s", err)
+			}
+			if got.Email != c.want {
+				t.Errorf("Email = %q, want %q", got.Email, c.want)
+			}
+			// A token-carried email is always trusted (verified).
+			if (got.Email != "") != got.EmailVerified {
+				t.Errorf("EmailVerified = %v for email %q", got.EmailVerified, got.Email)
+			}
+		})
+	}
+}
+
 func TestNoKeyFallsBackToJWKSMode(t *testing.T) {
 	v, err := NewPrivyVerifier(testAppID, "")
 	if err != nil {

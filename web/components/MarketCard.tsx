@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { StateChip, creatorMicrocopy } from "@/components/StateChip";
 import { OrderBook } from "@/components/OrderBook";
+import { MarketDetails } from "@/components/MarketDetails";
 import { Sheet } from "@/components/Sheet";
 import { ChevronDownIcon, Spinner, TradesIcon, CloseIcon } from "@/components/icons";
 import { useTrading } from "@/lib/trading";
@@ -59,7 +60,8 @@ export function MarketCard({
 
   const isCreator = me?.id === market.creator?.id;
   const micro = isCreator ? creatorMicrocopy(market.status) : null;
-  const tradable = market.status === "OPEN" || market.status === "MATCHED";
+  const tradable =
+    market.status === "OPEN" || market.status === "MATCHED" || market.status === "SETTLING"; // SETTLING stays tradable
   const pos = market.poster_position;
 
   const marketPrice =
@@ -367,7 +369,7 @@ export function MarketCard({
               aria-expanded={details}
               className="flex items-center gap-1 text-xs font-bold text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
             >
-              Details
+              Full market details
               <ChevronDownIcon
                 size={14}
                 className={`transition ${details ? "rotate-180" : ""}`}
@@ -379,20 +381,13 @@ export function MarketCard({
           </div>
 
           {details && (
-            <div className="mt-2 space-y-3 rounded-xl bg-card p-3">
-              {(market.status === "OPEN" ||
-                market.status === "MATCHED" ||
-                market.status === "SETTLING") && (
-                <OrderBook marketId={market.id} compact />
-              )}
-              <div>
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted">
-                  Settlement query (public)
-                </p>
-                <p className="whitespace-pre-wrap rounded-lg bg-surface p-2.5 font-mono text-[11px] leading-relaxed text-fg/90">
-                  {market.settlement_query}
-                </p>
-              </div>
+            <div className="mt-2 space-y-3">
+              <MarketDetails
+                market={market}
+                position={market.poster_position ?? market.my_position}
+                positionLabel={poster ? `@${poster.username} holds` : "Position"}
+                posterPnl={market.poster_pnl}
+              />
               {tradable && (
                 <button
                   onClick={() => setSettleConfirm(true)}
@@ -418,9 +413,7 @@ export function MarketCard({
             pay a <strong>5¢</strong> settlement fee. If the outcome isn&apos;t
             determinable yet, the market stays open and you can re-trigger later.
           </p>
-          <p className="mt-3 whitespace-pre-wrap rounded-lg bg-surface p-2.5 font-mono text-[11px] leading-relaxed text-fg/90">
-            {market.settlement_query}
-          </p>
+          <ParsedSettlementQuery raw={market.settlement_query} />
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               onClick={() => setSettleConfirm(false)}
@@ -434,6 +427,48 @@ export function MarketCard({
           </div>
         </Sheet>
       )}
+    </div>
+  );
+}
+
+// Parsed settlement-query display: settlement JSON is never shown raw — the
+// question / category / rule / sources render as readable rows (raw text only
+// for legacy unparsable queries).
+function ParsedSettlementQuery({ raw }: { raw: string }) {
+  let parsed: {
+    question?: string;
+    category?: string;
+    rule?: string;
+    sources?: { name?: string; id?: string }[];
+  } | null = null;
+  try {
+    const v = JSON.parse(raw);
+    if (v && typeof v === "object") parsed = v;
+  } catch {
+    /* not JSON */
+  }
+  if (!parsed) {
+    return (
+      <p className="mt-3 whitespace-pre-wrap rounded-lg bg-surface p-2.5 text-[12px] leading-relaxed text-fg/90">
+        {raw}
+      </p>
+    );
+  }
+  const rows: [string, string][] = [];
+  if (parsed.question) rows.push(["Question", parsed.question]);
+  if (parsed.category) rows.push(["Category", parsed.category]);
+  if (parsed.rule)
+    rows.push(["Rule", parsed.rule === "majority" ? "Majority of sources" : "Single source"]);
+  if (parsed.sources?.length)
+    rows.push(["Sources", parsed.sources.map((s) => s.name || s.id || "?").join(", ")]);
+  return (
+    <div className="mt-3 space-y-1.5 rounded-lg bg-surface p-2.5">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex gap-2 text-[12px] leading-relaxed">
+          <span className="w-[72px] shrink-0 text-fg/50">{label}</span>
+          <span className="font-medium text-fg/90">{value}</span>
+        </div>
+      ))}
     </div>
   );
 }

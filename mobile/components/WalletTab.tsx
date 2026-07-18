@@ -28,7 +28,7 @@ export function WalletTab() {
 
   const wallet = useQuery({
     queryKey: ["wallet"],
-    queryFn: () => api.get<WalletInfo>("/v1/wallet"),
+    queryFn: () => api.get<{ wallet: WalletInfo }>("/v1/wallet").then((r) => r.wallet),
   });
   const positions = useQuery({
     queryKey: ["positions"],
@@ -285,7 +285,7 @@ function FundSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   const startFiat = async () => {
     setBusy("fiat");
     try {
-      const s = await api.post<OnrampSession>("/v1/onramp/sessions", { kind: "fiat" });
+      const { session: s } = await api.post<{ session: OnrampSession }>("/v1/onramp/sessions", { kind: "fiat" });
       if (s.checkout_url) {
         // Provider-hosted checkout (Stripe-style rail) in an in-app browser.
         await WebBrowser.openBrowserAsync(s.checkout_url);
@@ -302,7 +302,7 @@ function FundSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   const startCrypto = async () => {
     setBusy("crypto");
     try {
-      const s = await api.post<OnrampSession>("/v1/onramp/sessions", { kind: "crypto" });
+      const { session: s } = await api.post<{ session: OnrampSession }>("/v1/onramp/sessions", { kind: "crypto" });
       setCrypto(s);
     } catch (e) {
       warn();

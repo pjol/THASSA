@@ -14,6 +14,7 @@ import { MediaCarousel } from "@/components/MediaCarousel";
 import { MarketCard } from "@/components/MarketCard";
 import { Sheet } from "@/components/Sheet";
 import { Comments } from "@/components/Comments";
+import { renderCaption, clipMentions } from "@/components/Caption";
 import {
   CommentIcon,
   HeartIcon,
@@ -199,13 +200,13 @@ export function PostCard({ post }: { post: Post }) {
             </Link>
             {longCaption && !captionOpen ? (
               <>
-                {caption.slice(0, 140)}…{" "}
+                {renderCaption(caption.slice(0, 140), clipMentions(post.mentions, 140))}…{" "}
                 <button onClick={() => setCaptionOpen(true)} className="text-muted">
                   more
                 </button>
               </>
             ) : (
-              caption
+              renderCaption(caption, post.mentions)
             )}
           </p>
         )}

@@ -646,6 +646,59 @@ contract ThassaMarkets is IThassaMarkets, ThassaOracle, EIP712, Ownable, Reentra
     }
 
     // ---------------------------------------------------------------------
+    // Expiry: a market can carry an expiration timestamp. Once past it, an
+    // unsettled market can be expired by ANYONE, resolving it 50/50 — each
+    // matched share (either side) redeems at 50¢ instead of a directional
+    // $1/0 payout. Stored in additive mappings (no Market layout change).
+    // ---------------------------------------------------------------------
+
+    mapping(uint256 => uint64) public marketExpiry;
+    mapping(uint256 => bool) public fiftyFifty;
+
+    event MarketExpirySet(uint256 indexed marketId, uint64 expiry);
+    event MarketExpired(uint256 indexed marketId);
+
+    /// @notice Sets/updates a market's expiration timestamp (owner/relayer,
+    ///         stamped at creation time by the platform).
+    function setMarketExpiry(uint256 marketId, uint64 expiry) external onlyOwner {
+        if (_markets[marketId].creator == address(0)) {
+            revert UnknownMarket(marketId);
+        }
+        marketExpiry[marketId] = expiry;
+        emit MarketExpirySet(marketId, expiry);
+    }
+
+    /// @notice Resolves a past-due, unsettled market 50/50. Callable by anyone
+    ///         once block.timestamp reaches the market's expiry.
+    function expireMarket(uint256 marketId) external nonReentrant {
+        Market storage market = _markets[marketId];
+        if (market.creator == address(0)) {
+            revert UnknownMarket(marketId);
+        }
+        uint64 expiry = marketExpiry[marketId];
+        if (expiry == 0 || block.timestamp < expiry) {
+            revert MarketNotExpired(marketId);
+        }
+        if (market.status == STATUS_SETTLED || market.status == STATUS_VOID) {
+            revert MarketNotVoidable(marketId, market.status);
+        }
+
+        if (market.status == STATUS_SETTLING) {
+            IThassaHub.Bid memory bid = IThassaHub(thassaHub).getBid(market.pendingBidId);
+            if (bid.isOpen) {
+                IThassaHub(thassaHub).cancelBid(market.pendingBidId);
+                protocolFeesAccrued += bid.amount;
+            }
+        }
+
+        market.settled = true;
+        market.status = STATUS_SETTLED;
+        fiftyFifty[marketId] = true;
+
+        emit MarketExpired(marketId);
+    }
+
+    // ---------------------------------------------------------------------
     // Payouts (pull payments)
     // ---------------------------------------------------------------------
 
@@ -654,7 +707,17 @@ contract ThassaMarkets is IThassaMarkets, ThassaOracle, EIP712, Ownable, Reentra
 
         uint256 shares;
         uint256 gross;
-        if (market.status == STATUS_SETTLED) {
+        if (market.status == STATUS_SETTLED && fiftyFifty[marketId]) {
+            // Expired 50/50: BOTH sides redeem at 50¢ per share.
+            Position storage yesPosition = _positions[marketId][msg.sender][SIDE_YES];
+            Position storage noPosition = _positions[marketId][msg.sender][SIDE_NO];
+            shares = uint256(yesPosition.shares) + noPosition.shares;
+            gross = (shares * _unit) / 2;
+            yesPosition.shares = 0;
+            yesPosition.costBasis = 0;
+            noPosition.shares = 0;
+            noPosition.costBasis = 0;
+        } else if (market.status == STATUS_SETTLED) {
             uint8 winningSide = market.direction ? SIDE_YES : SIDE_NO;
             Position storage position = _positions[marketId][msg.sender][winningSide];
             shares = position.shares;
@@ -895,7 +958,12 @@ contract ThassaMarkets is IThassaMarkets, ThassaOracle, EIP712, Ownable, Reentra
         if (market.creator == address(0)) {
             revert UnknownMarket(marketId);
         }
-        if (market.status != STATUS_OPEN && market.status != STATUS_MATCHED) {
+        // SETTLING stays open for trading: orders keep matching while the
+        // oracle resolves; only a final SETTLED/VOID (or PENDING) blocks.
+        if (
+            market.status != STATUS_OPEN && market.status != STATUS_MATCHED
+                && market.status != STATUS_SETTLING
+        ) {
             revert MarketNotTradeable(marketId, market.status);
         }
     }

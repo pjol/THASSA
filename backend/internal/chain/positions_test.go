@@ -59,3 +59,65 @@ func TestSettlePnlMatchesSQLFormula(t *testing.T) {
 		t.Fatalf("loser mismatch: %d vs %d", got, lose)
 	}
 }
+
+func TestPositionSwing(t *testing.T) {
+	tests := []struct {
+		name      string
+		prev, cur int64
+		wantPct   int
+		wantSwung bool
+	}{
+		// Opening from zero is never a "swing" (no prior magnitude).
+		{"open from zero", 0, 100, 0, false},
+		// +50% exactly is NOT > 50%.
+		{"exactly 50pct up", 100, 150, 50, false},
+		// Just over 50% up.
+		{"51pct up", 100, 151, 51, true},
+		// Doubling.
+		{"double", 100, 200, 100, true},
+		// A shrink of >50% (magnitude down): 100 → 40 is −60%.
+		{"60pct down", 100, 40, -60, true},
+		// Small move, no swing.
+		{"10pct up", 100, 110, 10, false},
+		// Rounding: 3 → 5 is +66.67% → rounds to 67.
+		{"rounds", 3, 5, 67, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pct, swung := PositionSwing(tt.prev, tt.cur)
+			if pct != tt.wantPct || swung != tt.wantSwung {
+				t.Fatalf("PositionSwing(%d,%d) = (%d,%v), want (%d,%v)",
+					tt.prev, tt.cur, pct, swung, tt.wantPct, tt.wantSwung)
+			}
+		})
+	}
+}
+
+func TestLargeEntry(t *testing.T) {
+	tests := []struct {
+		name        string
+		size        int64
+		sum, count  int64
+		wantLarge   bool
+	}{
+		// No history ⇒ never large (guard against divide-by-zero).
+		{"no history", 1000, 0, 0, false},
+		// avg = 100; 2×avg = 200; 201 > 200 ⇒ large.
+		{"just over 2x", 201, 1000, 10, true},
+		// exactly 2×avg is NOT strictly greater.
+		{"exactly 2x", 200, 1000, 10, false},
+		// well under.
+		{"under", 150, 1000, 10, false},
+		// avg = 50; threshold 100; 100 not > 100.
+		{"boundary", 100, 500, 10, false},
+		{"boundary over", 101, 500, 10, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := LargeEntry(tt.size, tt.sum, tt.count); got != tt.wantLarge {
+				t.Fatalf("LargeEntry(%d,%d,%d) = %v, want %v",
+					tt.size, tt.sum, tt.count, got, tt.wantLarge)
+			}
+		})
+	}
+}

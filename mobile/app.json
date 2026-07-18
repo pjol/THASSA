@@ -30,6 +30,20 @@
         {
           "photosPermission": "Allow $(PRODUCT_NAME) to access your photos so you can share them in posts, stories, and messages."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use your camera so you can capture a photo for your story.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#307CDE"
+        }
       ]
     ],
     "extra": {

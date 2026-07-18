@@ -53,7 +53,24 @@ function describe(n: Notification): { text: string; href: string } {
       return { text: `${actor} liked your post`, href: `/u/${n.payload.actor?.username ?? ""}` };
     case "post.commented":
       return { text: `${actor} commented: ${n.payload.text ?? ""}`, href: `/u/${n.payload.actor?.username ?? ""}` };
+    case "post.mention":
+      return {
+        text: `${actor} mentioned you in a post`,
+        // Deep-link to the post (same convention as post sharing).
+        href: n.payload.post_id ? `/?post=${n.payload.post_id}` : `/u/${n.payload.actor?.username ?? ""}`,
+      };
+    case "position.swing":
+      return {
+        text: `Your position in "${n.payload.market_question ?? "a market"}" moved more than 50%`,
+        href: `/markets/${n.payload.market_id ?? ""}`,
+      };
+    case "following.large_entry":
+      return {
+        text: `${actor} placed a large entry in "${n.payload.market_question ?? "a market"}"`,
+        href: `/markets/${n.payload.market_id ?? ""}`,
+      };
     case "follow":
+    case "follow.new":
       return { text: `${actor} started following you`, href: `/u/${n.payload.actor?.username ?? ""}` };
     case "follow.request":
       return { text: `${actor} requested to follow you`, href: `/notifications` };

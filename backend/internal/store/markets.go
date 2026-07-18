@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,7 +14,7 @@ import (
 )
 
 const marketSummaryCols = `m.id, m.chain_market_id, m.title, m.question, m.status, m.direction,
-	m.yes_price_cents, m.no_price_cents, m.volume, m.created_at`
+	m.yes_price_cents, m.no_price_cents, m.volume, m.expires_at, m.resolved_fifty, m.created_at`
 
 // SearchMarkets runs the typeahead search: pg_trgm similarity over question
 // combined with full-text (websearch_to_tsquery) over the tsvector column.
@@ -34,6 +35,66 @@ func (s *Store) SearchMarkets(ctx context.Context, q string, limit int) ([]struc
 		return nil, err
 	}
 	return scanMarketSummaries(rows)
+}
+
+// SaveGeneratedCandidates persists generation output for cross-user reuse:
+// later attach-market searches surface these as "start market" suggestions
+// before anyone has to re-generate them. One row per distinct question;
+// candidates that mapped to an existing market are skipped.
+func (s *Store) SaveGeneratedCandidates(ctx context.Context, userID uuid.UUID, cands []structs.MarketCandidate) {
+	for _, c := range cands {
+		if c.ExistingMarketID != nil || c.Question == "" || c.SettlementQuery == "" {
+			continue
+		}
+		srcJSON, err := json.Marshal(c.Sources)
+		if err != nil {
+			srcJSON = []byte("[]")
+		}
+		_, _ = s.pool.Exec(ctx, `
+			INSERT INTO generated_market_candidates
+				(created_by, title, question, settlement_query, category, rule, sources)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
+			ON CONFLICT ((lower(question))) DO NOTHING`,
+			userID, c.Title, c.Question, c.SettlementQuery, c.Category, c.Rule, srcJSON)
+	}
+}
+
+// SearchGeneratedCandidates returns stored, not-yet-started candidates
+// matching the query (trigram + substring over question/title).
+func (s *Store) SearchGeneratedCandidates(ctx context.Context, q string, limit int) ([]structs.GeneratedCandidate, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, title, question, settlement_query, COALESCE(category,''), COALESCE(rule,''), sources
+		FROM generated_market_candidates
+		WHERE market_id IS NULL
+		  AND (question % $1 OR question ILIKE '%'||$1||'%' OR title ILIKE '%'||$1||'%')
+		ORDER BY GREATEST(similarity(question, $1), similarity(title, $1)) DESC, created_at DESC
+		LIMIT $2`, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []structs.GeneratedCandidate{}
+	for rows.Next() {
+		var g structs.GeneratedCandidate
+		var srcJSON []byte
+		if err := rows.Scan(&g.ID, &g.Title, &g.Question, &g.SettlementQuery, &g.Category, &g.Rule, &srcJSON); err != nil {
+			return nil, err
+		}
+		g.Sources = []structs.SourceRef{}
+		if len(srcJSON) > 0 {
+			_ = json.Unmarshal(srcJSON, &g.Sources)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// MarkGeneratedCandidateStarted stamps the created market onto the stored
+// candidate (matched by question), removing it from future suggestions.
+func (s *Store) MarkGeneratedCandidateStarted(ctx context.Context, question string, marketID uuid.UUID) {
+	_, _ = s.pool.Exec(ctx, `
+		UPDATE generated_market_candidates SET market_id=$2
+		WHERE lower(question)=lower($1) AND market_id IS NULL`, question, marketID)
 }
 
 // SimilarMarketBySettlement finds the most similar existing market to a
@@ -62,14 +123,34 @@ func (s *Store) SimilarMarketBySettlement(ctx context.Context, settlementQuery, 
 }
 
 // ExploreMarkets ranks markets by volume + recency for the explore tab.
-func (s *Store) ExploreMarkets(ctx context.Context, limit int, offset int) ([]structs.MarketSummary, error) {
+func (s *Store) ExploreMarkets(ctx context.Context, limit, offset int, status, sort string) ([]structs.MarketSummary, error) {
+	// Status filter: "active" (the default UI view) shows only tradable
+	// markets; the sort/filter menu opens the rest up.
+	var statuses []string
+	switch status {
+	case "settling":
+		statuses = []string{"SETTLING"}
+	case "settled":
+		statuses = []string{"SETTLED"}
+	case "all":
+		statuses = []string{"OPEN", "MATCHED", "SETTLING", "SETTLED"}
+	default: // "active"
+		statuses = []string{"OPEN", "MATCHED"}
+	}
+	order := `(m.volume+1)::numeric * exp(-extract(epoch FROM (now()-m.created_at))/604800.0) DESC,
+	          m.created_at DESC` // trending (default)
+	switch sort {
+	case "newest":
+		order = `m.created_at DESC`
+	case "volume":
+		order = `m.volume DESC, m.created_at DESC`
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+marketSummaryCols+`
 		FROM markets m
-		WHERE m.status IN ('OPEN','MATCHED','SETTLING','SETTLED')
-		ORDER BY (m.volume+1)::numeric * exp(-extract(epoch FROM (now()-m.created_at))/604800.0) DESC,
-		         m.created_at DESC
-		LIMIT $1 OFFSET $2`, limit, offset)
+		WHERE m.status = ANY($3)
+		ORDER BY `+order+`
+		LIMIT $1 OFFSET $2`, limit, offset, statuses)
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +168,9 @@ type CreateMarketParams struct {
 	Category        string
 	Rule            string
 	Sources         []structs.SourceRef
+	// ExpiresAt: when reached before settlement, the market auto-resolves
+	// 50/50. Nil ⇒ the handler's category default applies.
+	ExpiresAt *time.Time
 }
 
 // CreateMarket inserts a PENDING market row (the relayer submits createMarket
@@ -98,10 +182,41 @@ func (s *Store) CreateMarket(ctx context.Context, p CreateMarketParams) (uuid.UU
 	}
 	var id uuid.UUID
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO markets (creator_id, title, question, settlement_query, category, rule, sources, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,'PENDING') RETURNING id`,
-		p.CreatorID, p.Title, p.Question, p.SettlementQuery, p.Category, p.Rule, srcJSON).Scan(&id)
+		INSERT INTO markets (creator_id, title, question, settlement_query, category, rule, sources, status, expires_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,'PENDING',$8) RETURNING id`,
+		p.CreatorID, p.Title, p.Question, p.SettlementQuery, p.Category, p.Rule, srcJSON, p.ExpiresAt).Scan(&id)
 	return id, err
+}
+
+// expiredMarket is one row auto-resolved 50/50 by ExpireDueMarkets.
+type ExpiredMarket struct {
+	ID        uuid.UUID
+	CreatorID uuid.UUID
+	Title     string
+}
+
+// ExpireDueMarkets resolves every past-due, unsettled market 50/50: status
+// SETTLED with resolved_fifty and no winning direction. Returns the affected
+// rows so the caller can notify and fan out.
+func (s *Store) ExpireDueMarkets(ctx context.Context) ([]ExpiredMarket, error) {
+	rows, err := s.pool.Query(ctx, `
+		UPDATE markets SET status='SETTLED', resolved_fifty=true, direction=NULL, updated_at=now()
+		WHERE expires_at IS NOT NULL AND expires_at < now()
+		  AND status IN ('OPEN','MATCHED','SETTLING')
+		RETURNING id, creator_id, title`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ExpiredMarket{}
+	for rows.Next() {
+		var m ExpiredMarket
+		if err := rows.Scan(&m.ID, &m.CreatorID, &m.Title); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 // GetMarket loads the market detail (public settlement query included), with
@@ -123,7 +238,7 @@ func (s *Store) GetMarket(ctx context.Context, viewerID, marketID uuid.UUID) (*s
 		FROM markets m JOIN users u ON u.id=m.creator_id
 		WHERE m.id=$2`, viewerID, marketID,
 	).Scan(&m.ID, &m.ChainMarketID, &m.Title, &m.Question, &m.Status, &m.Direction,
-		&m.YesPriceCents, &m.NoPriceCents, &m.Volume, &m.CreatedAt,
+		&m.YesPriceCents, &m.NoPriceCents, &m.Volume, &m.ExpiresAt, &m.ResolvedFifty, &m.CreatedAt,
 		&m.SettlementQuery, &m.Category, &m.Rule, &srcJSON, &m.CreatorFeeAccrued,
 		&m.Creator.ID, &m.Creator.Username, &m.Creator.DisplayName, &m.Creator.AvatarURL,
 		&m.CommentCount, &m.LikeCount, &m.LikedByMe, &posJSON)
@@ -252,7 +367,8 @@ func scanMarketSummaries(rows pgx.Rows) ([]structs.MarketSummary, error) {
 	for rows.Next() {
 		var m structs.MarketSummary
 		if err := rows.Scan(&m.ID, &m.ChainMarketID, &m.Title, &m.Question, &m.Status,
-			&m.Direction, &m.YesPriceCents, &m.NoPriceCents, &m.Volume, &m.CreatedAt); err != nil {
+			&m.Direction, &m.YesPriceCents, &m.NoPriceCents, &m.Volume,
+			&m.ExpiresAt, &m.ResolvedFifty, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -262,7 +378,8 @@ func scanMarketSummaries(rows pgx.Rows) ([]structs.MarketSummary, error) {
 
 func scanMarketSummary(row pgx.Row, m *structs.MarketSummary, extra ...any) error {
 	dest := []any{&m.ID, &m.ChainMarketID, &m.Title, &m.Question, &m.Status,
-		&m.Direction, &m.YesPriceCents, &m.NoPriceCents, &m.Volume, &m.CreatedAt}
+		&m.Direction, &m.YesPriceCents, &m.NoPriceCents, &m.Volume,
+		&m.ExpiresAt, &m.ResolvedFifty, &m.CreatedAt}
 	dest = append(dest, extra...)
 	return row.Scan(dest...)
 }

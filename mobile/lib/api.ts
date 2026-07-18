@@ -1,10 +1,20 @@
 import { useMemo, useRef } from "react";
+import { Platform } from "react-native";
 import * as Crypto from "expo-crypto";
 import * as FileSystem from "expo-file-system/legacy";
 import { useAuth } from "./auth";
-import { getCachedJSON, setCachedJSON } from "./diskCache";
+import { getCachedJSON, setCachedJSON, tierForPath } from "./cache";
+import { resolveWarpTargetId } from "./warpStore";
 
 export const API_BASE = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080";
+
+// Public web-app base for externally shareable links (post permalinks etc.).
+export const SHARE_BASE = process.env.EXPO_PUBLIC_SHARE_URL || "https://app.thassa.xyz";
+
+// External share link for a post — an https URL anyone can open.
+export function postShareUrl(postId: string): string {
+  return `${SHARE_BASE}/post/${postId}`;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -30,6 +40,10 @@ export class NetworkError extends Error {
 export function errorMessage(e: unknown): string {
   if (e instanceof NetworkError) return "Can't reach the server. Check your internet and try again.";
   if (e instanceof ApiError) {
+    // Warp is read-only (spec §7c.2): the backend rejects mutations with 403
+    // {"error":"read-only while warped"}. Surface a clear, non-alarming reason.
+    if (e.status === 403 && e.body?.error === "read-only while warped")
+      return "You're viewing as another user. Exit warp to make changes.";
     if (e.status === 401 || e.status === 403) return "You don't have access to do that.";
     if (e.status === 404) return "We couldn't find that.";
     if (e.status >= 500) return "Something went wrong on our end. Please try again.";
@@ -75,6 +89,11 @@ export class Api {
     idemKey?: string
   ): Promise<T> {
     const token = await this.getToken();
+    // Warp header (spec §7c.2): attached to EVERY backend request while an admin
+    // is impersonating a user, exactly like the auth token — a module-level
+    // getter consulted per request so all methods (incl. upload) pick it up and
+    // the backend loads the target's data. Null (and no header) when not warped.
+    const warpTargetId = await resolveWarpTargetId();
     let res: Response;
     try {
       res = await fetch(`${API_BASE}${path}`, {
@@ -82,6 +101,7 @@ export class Api {
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(warpTargetId ? { "X-Thassa-Warp": warpTargetId } : {}),
           ...(idemKey ? { "Idempotency-Key": idemKey } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -116,8 +136,10 @@ export class Api {
   async get<T>(path: string): Promise<T> {
     try {
       const data = await this.req<T>("GET", path);
-      // Warm the device cache for offline reuse (fire-and-forget).
-      setCachedJSON("GET:" + path, data);
+      // Warm the rotating device cache for offline reuse (fire-and-forget).
+      // User-specific paths (/v1/me, own profile/posts) cache at `pinned` tier
+      // so they're retained longest under the 500 MB budget.
+      setCachedJSON("GET:" + path, data, tierForPath(path));
       return data;
     } catch (e) {
       if (e instanceof NetworkError) {
@@ -139,6 +161,11 @@ export class Api {
   del<T>(path: string) {
     return this.req<T>("DELETE", path, undefined, 0, Crypto.randomUUID());
   }
+  // DELETE with a JSON body — a few endpoints identify the resource in the body
+  // rather than the path (e.g. DELETE /v1/me/push-token {token}, spec §7d.4).
+  delWithBody<T>(path: string, body: any) {
+    return this.req<T>("DELETE", path, body, 0, Crypto.randomUUID());
+  }
 
   // Upload a local file (from expo-image-picker) via the media presign flow
   // (spec §6.3): POST /v1/media → presigned PUT → POST /v1/media/{id}/complete.
@@ -146,14 +173,35 @@ export class Api {
   async uploadMedia(
     localUri: string,
     contentType: string,
-    opts?: { onProgress?: (fraction: number) => void }
+    opts?: { onProgress?: (fraction: number) => void; signal?: AbortSignal }
   ): Promise<{ id: string; url: string }> {
+    const signal = opts?.signal;
+    if (signal?.aborted) throw new Error("upload aborted");
     const presign = await this.post<{ id: string; upload_url: string; public_url: string }>(
       "/v1/media",
       { content_type: contentType }
     );
-    // React Native's fetch can't reliably turn a file:// URI into a blob body,
-    // so use expo-file-system's binary uploadAsync instead.
+
+    // WEB: expo-file-system's uploadAsync doesn't work in the browser (there
+    // is no native file system) — every upload "fails" and the tray shows a
+    // permanent Retry overlay. Fetch the blob: URI and PUT it directly.
+    if (Platform.OS === "web") {
+      if (signal?.aborted) throw new Error("upload aborted");
+      const blob = await (await fetch(localUri)).blob();
+      const put = await fetch(presign.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body: blob,
+        signal,
+      });
+      if (!put.ok) throw new Error(`upload failed (${put.status})`);
+      await this.post(`/v1/media/${presign.id}/complete`);
+      opts?.onProgress?.(1);
+      return { id: presign.id, url: presign.public_url };
+    }
+
+    // NATIVE: React Native's fetch can't reliably turn a file:// URI into a
+    // blob body, so use expo-file-system's binary uploadAsync instead.
     const task = FileSystem.createUploadTask(
       presign.upload_url,
       localUri,
@@ -168,14 +216,26 @@ export class Api {
         }
       }
     );
-    const res = await task.uploadAsync();
-    if (!res || res.status < 200 || res.status >= 300) {
-      throw new Error(`upload failed (${res?.status ?? "network"})`);
+    // Cancellation: when the caller aborts (e.g. the user edited/removed the
+    // attachment before it finished), stop the in-flight PUT so we don't waste
+    // bandwidth. The caller discards the rejected promise.
+    const onAbort = () => {
+      task.cancelAsync().catch(() => {});
+    };
+    signal?.addEventListener("abort", onAbort);
+    try {
+      const res = await task.uploadAsync();
+      if (signal?.aborted) throw new Error("upload aborted");
+      if (!res || res.status < 200 || res.status >= 300) {
+        throw new Error(`upload failed (${res?.status ?? "network"})`);
+      }
+      // Kicks off server-side processing (HLS transcode for videos).
+      await this.post(`/v1/media/${presign.id}/complete`);
+      opts?.onProgress?.(1);
+      return { id: presign.id, url: presign.public_url };
+    } finally {
+      signal?.removeEventListener("abort", onAbort);
     }
-    // Kicks off server-side processing (HLS transcode for videos).
-    await this.post(`/v1/media/${presign.id}/complete`);
-    opts?.onProgress?.(1);
-    return { id: presign.id, url: presign.public_url };
   }
 }
 

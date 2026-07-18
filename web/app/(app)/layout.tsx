@@ -5,12 +5,11 @@
 // /onboarding → shell.
 
 import { useEffect } from "react";
-import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSession } from "@/providers/SessionProvider";
 import { AppShell } from "@/components/AppShell";
-import { Spinner } from "@/components/icons";
+import { LogoSpinner } from "@/components/LogoSpinner";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { ready, authenticated } = useAuth();
@@ -32,9 +31,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!ready || (authenticated && loading) || needsLogin || needsOnboarding) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-bg">
-        <Image src="/thassa-logo.svg" alt="Thassa" width={56} height={56} priority />
-        <Spinner size={22} className="text-muted" />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-bg">
+        <LogoSpinner size={56} />
       </div>
     );
   }

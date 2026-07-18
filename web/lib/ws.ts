@@ -41,9 +41,10 @@ class ThassaSocket {
     try {
       const token = await this.tokenGetter();
       if (!token) return;
-      const ws = new WebSocket(
-        `${WS_URL}?token=${encodeURIComponent(token)}`,
-      );
+      // Auth rides the Sec-WebSocket-Protocol header (the only header a browser
+      // WebSocket can set), never a query param: sentinel + token. The server
+      // echoes only the "thassa-bearer" sentinel back.
+      const ws = new WebSocket(WS_URL, ["thassa-bearer", token]);
       this.ws = ws;
       ws.onopen = () => {
         this.backoff = 1000;

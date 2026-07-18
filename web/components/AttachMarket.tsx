@@ -14,6 +14,7 @@ import { useToast } from "@/providers/ToastProvider";
 import { useDebounced } from "@/lib/hooks";
 import { StateChip } from "@/components/StateChip";
 import { OrderBook } from "@/components/OrderBook";
+import { MarketDetails } from "@/components/MarketDetails";
 import {
   ChevronDownIcon,
   CloseIcon,
@@ -61,6 +62,7 @@ export function AttachMarket({
   const [amount, setAmount] = useState("10");
   const [slider, setSlider] = useState(50); // maker price for new markets
   const [advanced, setAdvanced] = useState(false);
+  const [fullDetails, setFullDetails] = useState(false);
   const [limitInput, setLimitInput] = useState("");
 
   const search = useQuery({
@@ -134,6 +136,7 @@ export function AttachMarket({
     onChange(null);
     setCandidates(null);
     setAdvanced(false);
+    setFullDetails(false);
     setLimitInput("");
   };
 
@@ -386,6 +389,27 @@ export function AttachMarket({
           </p>
         )}
       </div>
+
+      {/* Full market details — review exactly what you're attaching, for both a
+          selected existing market and a generated candidate. */}
+      <button
+        type="button"
+        onClick={() => setFullDetails((f) => !f)}
+        aria-expanded={fullDetails}
+        className="mt-3 flex items-center gap-1 text-xs font-bold text-brand"
+      >
+        Full market details
+        <ChevronDownIcon size={14} className={`transition ${fullDetails ? "rotate-180" : ""}`} />
+      </button>
+      {fullDetails && (
+        <div className="mt-2">
+          {selMarket ? (
+            <MarketDetails market={selMarket} />
+          ) : (
+            <MarketDetails candidate={selCandidate} />
+          )}
+        </div>
+      )}
     </div>
   );
 }

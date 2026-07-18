@@ -176,7 +176,7 @@ func (s *Store) conversationMembers(ctx context.Context, convID uuid.UUID) ([]st
 func (s *Store) Messages(ctx context.Context, convID uuid.UUID, o FeedOpts) ([]structs.Message, *string, error) {
 	sql := `
 		SELECT m.id, m.conversation_id, ` + userBriefCols + `, m.body,
-		       m.media_kind, m.s3_key, m.hls_key, m.reply_to_id, m.created_at,
+		       m.media_kind, m.s3_key, m.hls_key, m.poster_key, m.variants, m.reply_to_id, m.post_id, m.created_at,
 		       (SELECT json_object_agg(emoji, cnt) FROM (
 		            SELECT emoji, count(*) cnt FROM reactions
 		            WHERE subject_type='message' AND subject_id=m.id GROUP BY emoji) z)
@@ -196,16 +196,21 @@ func (s *Store) Messages(ctx context.Context, convID uuid.UUID, o FeedOpts) ([]s
 	defer rows.Close()
 	out := []structs.Message{}
 	for rows.Next() {
-		m, err := scanMessage(rows.Scan)
+		m, variantsJSON, err := scanMessage(rows.Scan)
 		if err != nil {
 			return nil, nil, err
 		}
-		m.MediaURL = s.urlPtr(m.MediaURL) // stored key -> URL
-		m.HLSURL = s.urlPtr(m.HLSURL)
+		s.resolveMessageMedia(m, variantsJSON)
 		out = append(out, *m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
+	}
+	// Resolve shared-post previews (rare per page; a bounded second lookup).
+	for i := range out {
+		if out[i].PostID != nil {
+			out[i].SharedPost = s.sharedPostFor(ctx, *out[i].PostID)
+		}
 	}
 	var next *string
 	if n := len(out); n > 0 && n >= o.Limit {
@@ -214,45 +219,76 @@ func (s *Store) Messages(ctx context.Context, convID uuid.UUID, o FeedOpts) ([]s
 	return out, next, nil
 }
 
-func scanMessage(scan func(...any) error) (*structs.Message, error) {
+// scanMessage scans a message row. MediaURL/HLSURL/PosterURL hold stored KEYS
+// at this point; the returned variantsJSON is the raw variants column. Callers
+// pass both to resolveMessageMedia to turn keys into public URLs.
+func scanMessage(scan func(...any) error) (*structs.Message, []byte, error) {
 	var m structs.Message
-	var reactionsJSON []byte
+	var reactionsJSON, variantsJSON []byte
 	if err := scan(&m.ID, &m.ConversationID, &m.Sender.ID, &m.Sender.Username,
 		&m.Sender.DisplayName, &m.Sender.AvatarURL, &m.Body,
-		&m.MediaKind, &m.MediaURL, &m.HLSURL, &m.ReplyToID, &m.CreatedAt, &reactionsJSON); err != nil {
-		return nil, err
+		&m.MediaKind, &m.MediaURL, &m.HLSURL, &m.PosterURL, &variantsJSON,
+		&m.ReplyToID, &m.PostID, &m.CreatedAt, &reactionsJSON); err != nil {
+		return nil, nil, err
 	}
 	m.Reactions = map[string]int{}
 	if len(reactionsJSON) > 0 {
 		_ = unmarshalCounts(reactionsJSON, m.Reactions)
 	}
-	return &m, nil
+	return &m, variantsJSON, nil
+}
+
+// resolveMessageMedia turns the stored media keys + variants JSON on a scanned
+// message into public URLs. For images whose original was dropped after
+// transcoding, MediaURL is repointed at the mid variant.
+func (s *Store) resolveMessageMedia(m *structs.Message, variantsJSON []byte) {
+	rawKey := m.MediaURL
+	m.MediaURL = s.urlPtr(m.MediaURL)
+	m.HLSURL = s.urlPtr(m.HLSURL)
+	m.PosterURL = s.urlPtr(m.PosterURL)
+	m.Variants = s.resolveVariants(variantsJSON)
+	if m.MediaKind != nil && *m.MediaKind == "image" && rawKey != nil {
+		if u := midVariantURL(m.Variants); u != "" {
+			m.MediaURL = &u // original dropped after transcoding; serve a variant
+		}
+	}
 }
 
 // SendMessage inserts a message (text and/or one media attachment copied from
-// an uploaded media row owned by the sender).
-func (s *Store) SendMessage(ctx context.Context, convID, senderID uuid.UUID, body *string, mediaID, replyToID *uuid.UUID) (*structs.Message, error) {
-	var mediaKind, s3Key, hlsKey *string
+// an uploaded media row owned by the sender, and/or one shared post).
+func (s *Store) SendMessage(ctx context.Context, convID, senderID uuid.UUID, body *string, mediaID, replyToID, postID *uuid.UUID) (*structs.Message, error) {
+	var mediaKind, s3Key, hlsKey, posterKey *string
+	var variantsJSON []byte
 	if mediaID != nil {
 		err := s.pool.QueryRow(ctx,
-			`SELECT kind, s3_key, hls_key FROM post_media WHERE id=$1 AND owner_id=$2`,
-			*mediaID, senderID).Scan(&mediaKind, &s3Key, &hlsKey)
+			`SELECT kind, s3_key, hls_key, poster_key, variants FROM post_media WHERE id=$1 AND owner_id=$2`,
+			*mediaID, senderID).Scan(&mediaKind, &s3Key, &hlsKey, &posterKey, &variantsJSON)
 		if err != nil {
 			return nil, errors.New("media not found")
 		}
 	}
+	if len(variantsJSON) == 0 {
+		variantsJSON = []byte("[]")
+	}
+	var sharedPost *structs.SharedPost
+	if postID != nil {
+		if sharedPost = s.sharedPostFor(ctx, *postID); sharedPost == nil {
+			return nil, errors.New("post not found")
+		}
+	}
 	var m structs.Message
+	var outVariants []byte
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO messages (conversation_id, sender_id, body, media_kind, s3_key, hls_key, reply_to_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING id, conversation_id, body, media_kind, s3_key, hls_key, reply_to_id, created_at`,
-		convID, senderID, body, mediaKind, s3Key, hlsKey, replyToID,
-	).Scan(&m.ID, &m.ConversationID, &m.Body, &m.MediaKind, &m.MediaURL, &m.HLSURL, &m.ReplyToID, &m.CreatedAt)
+		INSERT INTO messages (conversation_id, sender_id, body, media_kind, s3_key, hls_key, poster_key, variants, reply_to_id, post_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)
+		RETURNING id, conversation_id, body, media_kind, s3_key, hls_key, poster_key, variants, reply_to_id, post_id, created_at`,
+		convID, senderID, body, mediaKind, s3Key, hlsKey, posterKey, variantsJSON, replyToID, postID,
+	).Scan(&m.ID, &m.ConversationID, &m.Body, &m.MediaKind, &m.MediaURL, &m.HLSURL, &m.PosterURL, &outVariants, &m.ReplyToID, &m.PostID, &m.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
-	m.MediaURL = s.urlPtr(m.MediaURL)
-	m.HLSURL = s.urlPtr(m.HLSURL)
+	s.resolveMessageMedia(&m, outVariants)
+	m.SharedPost = sharedPost
 	m.Reactions = map[string]int{}
 	if err := s.pool.QueryRow(ctx,
 		`SELECT `+userBriefCols+` FROM users u WHERE u.id=$1`, senderID,
@@ -260,6 +296,27 @@ func (s *Store) SendMessage(ctx context.Context, convID, senderID uuid.UUID, bod
 		return nil, err
 	}
 	return &m, nil
+}
+
+// sharedPostFor loads the compact preview of a post shared into a DM.
+// Returns nil (not an error) when the post is gone or deleted.
+func (s *Store) sharedPostFor(ctx context.Context, postID uuid.UUID) *structs.SharedPost {
+	var sp structs.SharedPost
+	var thumb *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT p.id, u.id, u.username, u.display_name, u.avatar_url, p.caption,
+		       (SELECT COALESCE(pm.variant_key, pm.s3_key) FROM post_media pm
+		        WHERE pm.post_id=p.id AND pm.status='ready' ORDER BY pm.position LIMIT 1),
+		       (SELECT mk.title FROM markets mk WHERE mk.id=p.market_id)
+		FROM posts p JOIN users u ON u.id=p.author_id
+		WHERE p.id=$1 AND p.deleted_at IS NULL`,
+		postID).Scan(&sp.ID, &sp.Author.ID, &sp.Author.Username, &sp.Author.DisplayName,
+		&sp.Author.AvatarURL, &sp.Caption, &thumb, &sp.MarketTitle)
+	if err != nil {
+		return nil
+	}
+	sp.ThumbURL = s.urlPtr(thumb)
+	return &sp
 }
 
 // MarkConversationRead stamps the caller's read pointer.

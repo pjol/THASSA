@@ -89,8 +89,8 @@ export default function Markets() {
 
       <h2 id="lifecycle">Market lifecycle</h2>
       <p>
-        Markets move through <strong>six one-word states</strong>, used
-        verbatim across the app, the API, and these docs:
+        A market moves through <strong>six states</strong>. The same values
+        appear in the app, in API responses, and throughout these docs:
       </p>
       <div className="table-scroll">
         <table>
@@ -108,16 +108,15 @@ export default function Markets() {
             <tr>
               <td><StateChip state="OPEN" /></td>
               <td>
-                Live; the creator&rsquo;s opening bet has not been taken yet.
-                Creator-side microcopy: &ldquo;You&rsquo;re committed. Waiting for
-                someone to take your bet.&rdquo;
+                Live; the creator&rsquo;s opening bet is on the book, waiting for
+                someone to take the other side.
               </td>
             </tr>
             <tr>
               <td><StateChip state="MATCHED" /></td>
               <td>
-                First fill against the creator&rsquo;s opening liquidity landed
-                (&ldquo;Your bet was taken.&rdquo;). Trading continues.
+                The creator&rsquo;s opening bet has been taken — the first fill
+                landed. Trading continues.
               </td>
             </tr>
             <tr>
@@ -134,8 +133,8 @@ export default function Markets() {
             <tr>
               <td><StateChip state="VOID" /></td>
               <td>
-                Invalidated via the owner-only escape hatch; all deposits
-                refundable.
+                Invalidated by the platform (owner-only{" "}
+                <code>voidMarket</code>); all deposits refundable.
               </td>
             </tr>
           </tbody>
@@ -175,8 +174,8 @@ export default function Markets() {
 
       <h2 id="fees">Fees</h2>
       <p>
-        Kalshi-style, <strong>taker-side only</strong>. Makers pay nothing.
-        The fee on each match, at execution price <code>p</code> (the maker&rsquo;s
+        Fees are <strong>taker-side only</strong> — makers pay nothing. The
+        fee on each match, at execution price <code>p</code> (the maker&rsquo;s
         price, in cents):
       </p>
       <CodeBlock title="taker fee" code={feeFormula} />

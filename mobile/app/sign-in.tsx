@@ -29,10 +29,21 @@ export default function SignIn() {
   const [stage, setStage] = useState<"email" | "code">("email");
   const [error, setError] = useState<string | null>(null);
 
+  // Surface the real Privy error (its message usually names the actual cause —
+  // e.g. missing/invalid app id or client id, unconfigured login method, wrong
+  // code) instead of a generic string that hides configuration problems.
+  const describe = (err: unknown, fallback: string) => {
+    const raw =
+      (err as { message?: string } | null)?.message ??
+      (typeof err === "string" ? err : "");
+    if (__DEV__ && raw) console.warn("[privy] sign-in error:", err);
+    return raw ? `${fallback} (${raw})` : fallback;
+  };
+
   const { sendCode, loginWithCode, state } = useLoginWithEmail({
-    onError: () => {
+    onError: (err) => {
       warn();
-      setError("That didn't work. Check the address / code and try again.");
+      setError(describe(err, "That didn't work. Check the address / code and try again."));
     },
     onLoginSuccess: () => {
       success();
@@ -44,16 +55,25 @@ export default function SignIn() {
       success();
       router.replace("/");
     },
-    onError: () => {
+    onError: (err) => {
       warn();
-      setError("Social sign-in didn't complete. Try again.");
+      setError(describe(err, "Social sign-in didn't complete. Try again."));
     },
   });
+
+  // Guard: if Privy isn't configured, say so plainly rather than failing on send.
+  const privyConfigured = !!(process.env.EXPO_PUBLIC_PRIVY_APP_ID || "").trim();
 
   const busy = state.status === "sending-code" || state.status === "submitting-code" || oauth.state.status === "loading";
 
   const submitEmail = async () => {
     setError(null);
+    if (!privyConfigured) {
+      setError(
+        "Sign-in isn't configured: EXPO_PUBLIC_PRIVY_APP_ID is missing. Set it in mobile/.env (and add EXPO_PUBLIC_PRIVY_CLIENT_ID from the Privy dashboard's App clients).",
+      );
+      return;
+    }
     try {
       await sendCode({ email: email.trim() });
       setStage("code");

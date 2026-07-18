@@ -13,6 +13,7 @@ import { ChevronDownIcon, Spinner } from "@/components/icons";
 import { useTrading } from "@/lib/trading";
 import { errorMessage } from "@/lib/api";
 import { useToast } from "@/providers/ToastProvider";
+import { useWarp } from "@/providers/WarpProvider";
 import {
   sharesForSpend,
   takerFeeUnits,
@@ -39,6 +40,7 @@ export function TradeSheet({
   const trading = useTrading();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { active: warped } = useWarp();
 
   const [side, setSide] = useState<Side>(initialSide);
   const [amount, setAmount] = useState<string>("10");
@@ -60,8 +62,9 @@ export function TradeSheet({
   const fee = takerFeeUnits(shares, price);
 
   const canTrade =
-    (market.status === "OPEN" || market.status === "MATCHED") &&
+    (market.status === "OPEN" || market.status === "MATCHED" || market.status === "SETTLING") &&
     shares > 0n &&
+    !warped && // read-only while warped (spec §7c.2)
     !phase;
 
   const place = async () => {
@@ -219,6 +222,8 @@ export function TradeSheet({
             {phase === "SIGNING" && <Spinner size={16} />}
             <StateChip state={phase} />
           </span>
+        ) : warped ? (
+          "Read-only (warp)"
         ) : (
           `Buy ${side.toUpperCase()} at ${fmtCents(price)}`
         )}

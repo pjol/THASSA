@@ -76,9 +76,11 @@ ws.on("message", (raw) => {
   },
   {
     label: "Browser",
-    title: "browser — ?key= auth",
-    code: `// Browsers can't set WebSocket headers — pass the key as a query param.
-const ws = new WebSocket("${W}/v1/ws?key=" + THASSA_KEY);
+    title: "browser — subprotocol auth",
+    code: `// Browsers can't set WebSocket headers, but they CAN send the
+// Sec-WebSocket-Protocol header via subprotocols. Pass a sentinel
+// then your key — never a query param (which would leak into logs).
+const ws = new WebSocket("${W}/v1/ws", ["thassa-key", THASSA_KEY]);
 
 ws.onopen = () =>
   ws.send(JSON.stringify({ type: "subscribe", channel: "book:42" }));
@@ -124,12 +126,15 @@ export default function WebSocketDocs() {
       </p>
 
       <h2 id="connect">Connect</h2>
-      <Endpoint method="WS" path="/v1/ws" auth="X-Thassa-Key or ?key=" />
+      <Endpoint method="WS" path="/v1/ws" auth="X-Thassa-Key (or Sec-WebSocket-Protocol)" />
       <p>
-        Authenticate on connect with the <code>X-Thassa-Key</code> header, or{" "}
-        <code>?key=</code> where headers are unavailable (browsers). Either
-        scope (<code>read</code> or <code>trade</code>) may subscribe to
-        market-data channels.
+        Authenticate on connect with the <code>X-Thassa-Key</code> header. In
+        browsers, which can&rsquo;t set WebSocket headers, send the key via the{" "}
+        <code>Sec-WebSocket-Protocol</code> header instead — offer the sentinel{" "}
+        <code>thassa-key</code> then your key as subprotocols (
+        <code>new WebSocket(url, [&quot;thassa-key&quot;, KEY])</code>). Keys are
+        never accepted as query parameters. Either scope (<code>read</code> or{" "}
+        <code>trade</code>) may subscribe to market-data channels.
       </p>
       <ClientTabs tabs={connectTabs} />
 

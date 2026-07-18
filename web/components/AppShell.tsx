@@ -9,9 +9,11 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSession } from "@/providers/SessionProvider";
+import { useWarp } from "@/providers/WarpProvider";
 import { useChannel } from "@/lib/ws";
 import { useToast } from "@/providers/ToastProvider";
 import { Avatar } from "@/components/Avatar";
+import { WarpBanner } from "@/components/WarpBanner";
 import {
   BellIcon,
   ExploreIcon,
@@ -50,6 +52,7 @@ function notifText(n: Notification): { title: string; body?: string } {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { me } = useSession();
+  const { active: warped } = useWarp();
   const pathname = usePathname();
   const router = useRouter();
   const toast = useToast();
@@ -87,9 +90,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const immersive = pathname.startsWith("/reels"); // full-bleed surfaces
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className={`min-h-screen bg-bg ${warped ? "pt-11" : ""}`}>
+      {/* Persistent warp banner (spec §7c.3) — offsets below via `warped`. */}
+      <WarpBanner />
+
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[76px] flex-col border-r border-edge bg-bg px-3 py-6 md:flex xl:w-60">
+      <aside
+        className={`fixed bottom-0 left-0 z-40 hidden w-[76px] flex-col border-r border-edge bg-bg px-3 py-6 md:flex xl:w-60 ${
+          warped ? "top-11" : "top-0"
+        }`}
+      >
         <Link
           href="/"
           className="mb-8 flex items-center gap-3 rounded-xl px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
@@ -129,7 +139,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile top bar */}
       {!immersive && (
-        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-edge bg-bg/85 px-4 py-2.5 backdrop-blur md:hidden">
+        <header
+          className={`sticky z-40 flex items-center justify-between border-b border-edge bg-bg/85 px-4 py-2.5 backdrop-blur md:hidden ${
+            warped ? "top-11" : "top-0"
+          }`}
+        >
           <Link href="/" className="flex items-center gap-2" aria-label="Thassa home">
             <Image src="/thassa-logo.svg" alt="" width={28} height={28} priority />
             <span className="text-lg font-extrabold tracking-tight text-fg">Thassa</span>

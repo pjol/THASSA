@@ -105,7 +105,7 @@ export default function ProfilePage() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="flex items-center gap-1.5 text-lg font-extrabold text-fg">
-              {user.username}
+              @{user.username}
               {user.private && <LockIcon size={14} className="text-muted" />}
             </h1>
             {isSelf ? (
@@ -137,15 +137,25 @@ export default function ProfilePage() {
             <div>
               <dt className="sr-only">Followers</dt>
               <dd>
-                <strong className="text-fg">{fmtCount(user.follower_count)}</strong>{" "}
-                <span className="text-muted">followers</span>
+                <Link
+                  href={`/u/${user.username}/followers`}
+                  className="transition hover:opacity-70"
+                >
+                  <strong className="text-fg">{fmtCount(user.follower_count)}</strong>{" "}
+                  <span className="text-muted">followers</span>
+                </Link>
               </dd>
             </div>
             <div>
               <dt className="sr-only">Following</dt>
               <dd>
-                <strong className="text-fg">{fmtCount(user.following_count)}</strong>{" "}
-                <span className="text-muted">following</span>
+                <Link
+                  href={`/u/${user.username}/following`}
+                  className="transition hover:opacity-70"
+                >
+                  <strong className="text-fg">{fmtCount(user.following_count)}</strong>{" "}
+                  <span className="text-muted">following</span>
+                </Link>
               </dd>
             </div>
           </dl>

@@ -13,14 +13,23 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { errorMessage, useApi } from "../lib/api";
-import { useWallet } from "../lib/auth";
+import { useAuth, useWallet } from "../lib/auth";
 import { success, warn } from "../lib/haptics";
 import { useSession } from "../lib/session";
 import { space, useTheme } from "../lib/theme";
 import type { Me } from "../lib/types";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { Avatar, Button, Field, useInputStyle } from "../components/ui";
 
-// Onboarding (username, avatar, bio, links) — also reused as "Edit profile"
+// Validate a profile link (regex-based — RN/Hermes has no reliable URL parser).
+// A missing scheme defaults to https; requires an http(s) URL whose host has a
+// dot (a real domain).
+function isValidUrl(raw: string): boolean {
+  const s = raw.includes("://") ? raw : `https://${raw}`;
+  return /^https?:\/\/[^\s./]+\.[^\s]+$/i.test(s);
+}
+
+// Onboarding (username, avatar, bio, link) — also reused as "Edit profile"
 // via ?edit=1. Ensures the embedded wallet exists before finishing so the
 // backend can capture the wallet address.
 export default function Onboarding() {
@@ -31,16 +40,19 @@ export default function Onboarding() {
   const inputStyle = useInputStyle();
   const { me, setMe, refresh } = useSession();
   const { ensureWallet } = useWallet();
+  const { logout } = useAuth();
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const isEdit = edit === "1";
 
   const [username, setUsername] = useState(me?.username ?? "");
   const [displayNameV, setDisplayNameV] = useState(me?.display_name ?? "");
   const [bio, setBio] = useState(me?.bio ?? "");
-  const [links, setLinks] = useState((me?.links ?? []).join("\n"));
+  const [link, setLink] = useState(me?.links?.[0] ?? "");
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const pickAvatar = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -53,6 +65,11 @@ export default function Onboarding() {
   };
 
   const submit = async () => {
+    const trimmedLink = link.trim();
+    if (trimmedLink && !isValidUrl(trimmedLink)) {
+      setError("Enter a valid link, e.g. https://example.com");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -64,17 +81,14 @@ export default function Onboarding() {
         const up = await api.uploadMedia(avatarUri, "image/jpeg");
         avatar_url = up.url;
       }
-      const updated = await api.patch<Me>("/v1/me", {
+      const res = await api.patch<{ me: Me }>("/v1/me", {
         username: username.trim().toLowerCase(),
         display_name: displayNameV.trim() || null,
         bio: bio.trim() || null,
-        links: links
-          .split("\n")
-          .map((l) => l.trim())
-          .filter(Boolean),
+        links: trimmedLink ? [trimmedLink] : [],
         ...(avatar_url ? { avatar_url } : {}),
       });
-      setMe(() => updated);
+      setMe(() => res.me);
       await refresh();
       success();
       router.replace(isEdit ? "/(tabs)/profile" : "/");
@@ -88,12 +102,45 @@ export default function Onboarding() {
 
   const usernameOk = /^[a-z0-9_.]{3,24}$/.test(username.trim().toLowerCase());
 
+  // Back button: while editing, just go back; during signup it cancels the
+  // whole signup and logs the user out (after confirmation via the branded
+  // ConfirmModal — whitelabel rule: no native Alert.alert).
+  const onBack = () => {
+    if (isEdit) {
+      router.back();
+      return;
+    }
+    setConfirmCancel(true);
+  };
+
+  const cancelSignup = async () => {
+    setCancelling(true);
+    // Privy's SDK clears local auth even when its remote session call
+    // fails (it only console.warns "Error destroying session") — but
+    // nothing auto-navigates this standalone route, so route to
+    // sign-in explicitly after the session is gone.
+    try {
+      await logout();
+    } catch {
+      /* local state is cleared regardless */
+    }
+    router.replace("/sign-in");
+  };
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
       <ScrollView
         contentContainerStyle={{ padding: space.xl, paddingTop: insets.top + space.xl, paddingBottom: 60 }}
         keyboardShouldPersistTaps="handled"
       >
+        <Pressable
+          onPress={onBack}
+          hitSlop={10}
+          accessibilityLabel={isEdit ? "Go back" : "Cancel signup and log out"}
+          style={{ marginBottom: space.md, alignSelf: "flex-start", padding: 4, marginLeft: -4 }}
+        >
+          <Ionicons name="chevron-back" size={26} color={t.text} />
+        </Pressable>
         <Text style={{ color: t.text, fontSize: 26, fontWeight: "800", marginBottom: 4 }}>
           {isEdit ? "Edit profile" : "Set up your profile"}
         </Text>
@@ -152,16 +199,16 @@ export default function Onboarding() {
             onChangeText={setBio}
           />
         </Field>
-        <Field label="Links" hint="One per line.">
+        <Field label="Link">
           <TextInput
-            style={[inputStyle, { minHeight: 60, textAlignVertical: "top" }]}
-            placeholder="yoursite.com"
+            style={inputStyle}
+            placeholder="https://example.com"
             placeholderTextColor={t.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
-            multiline
-            value={links}
-            onChangeText={setLinks}
+            keyboardType="url"
+            value={link}
+            onChangeText={setLink}
           />
         </Field>
 
@@ -173,6 +220,18 @@ export default function Onboarding() {
           disabled={!usernameOk}
         />
       </ScrollView>
+
+      <ConfirmModal
+        visible={confirmCancel}
+        title="Cancel your signup?"
+        message="Are you sure you want to cancel your signup? You'll be logged out and your profile won't be saved."
+        cancelLabel="Keep going"
+        confirmLabel="Log out"
+        destructive
+        loading={cancelling}
+        onCancel={() => setConfirmCancel(false)}
+        onConfirm={cancelSignup}
+      />
     </KeyboardAvoidingView>
   );
 }

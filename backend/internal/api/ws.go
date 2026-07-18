@@ -14,15 +14,20 @@ import (
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	// Echo the auth sentinel subprotocol the browser offered (the credential
+	// travels as the second subprotocol; only the sentinel is reflected back).
+	// gorilla selects the first of these present in the client's offer.
+	Subprotocols: []string{"thassa-bearer", "thassa-key"},
 	// Auth is enforced by the token middleware before the upgrade; native
 	// clients send no meaningful Origin.
 	CheckOrigin: func(_ *http.Request) bool { return true },
 }
 
 // handleWS upgrades to the single realtime socket (spec §6.4). It runs inside
-// the authed group (Authorization header or ?token=), so the identity is
-// already resolved. Channel subscriptions (dm:/book:/user:) are authorized in
-// canJoinChannel with the CONNECTION's authenticated user (§8.1).
+// the authed group (Authorization header, or the Sec-WebSocket-Protocol header
+// for browsers), so the identity is already resolved. Channel subscriptions
+// (dm:/book:/user:) are authorized in canJoinChannel with the CONNECTION's
+// authenticated user (§8.1).
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	id, ok := auth.FromContext(r.Context())
 	if !ok {

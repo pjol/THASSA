@@ -5,7 +5,7 @@ import { useApi, ApiError } from "../lib/api";
 import { cents, dollars, timeAgo } from "../lib/format";
 import { space, useTheme } from "../lib/theme";
 import { nextCursorOf, pageItems, type Paged, type Trade } from "../lib/types";
-import { EmptyState, Loading } from "./states";
+import { EmptyState, ErrorState } from "./states";
 import { SideBadge, StateChip } from "./StateChip";
 import { Skeleton } from "./ui";
 
@@ -83,7 +83,7 @@ export function TradesTabContent({ username, hidden }: { username: string; hidde
       </View>
     );
   }
-  if (q.isError) return <Loading label="Couldn't load trades." />;
+  if (q.isError) return <ErrorState title="Couldn't load trades" onRetry={() => q.refetch()} />;
   const trades = q.data?.pages.flatMap((p) => pageItems<Trade>(p)) ?? [];
   if (trades.length === 0) {
     return <EmptyState icon="stats-chart-outline" title="No trades yet" subtitle="Bets show up here once placed." />;

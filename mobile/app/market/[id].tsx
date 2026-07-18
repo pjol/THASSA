@@ -8,11 +8,13 @@ import { CommentsList } from "../../components/CommentsList";
 import { OrderBook } from "../../components/OrderBook";
 import { ResolutionBlock, ResolutionCaption } from "../../components/Resolution";
 import { SideBadge, StateChip } from "../../components/StateChip";
+import { ListRowsSkeleton } from "../../components/skeletons";
 import { ErrorState, Loading, EmptyState } from "../../components/states";
 import { SettleSheet, TradeSheet } from "../../components/TradeSheet";
 import { useToasts } from "../../components/Toasts";
 import { Avatar, Button, Segmented } from "../../components/ui";
 import { errorMessage, useApi } from "../../lib/api";
+import { bestImageUrl } from "../../lib/media";
 import { cents, dollars, timeAgo } from "../../lib/format";
 import { success } from "../../lib/haptics";
 import { useSession } from "../../lib/session";
@@ -37,7 +39,7 @@ export default function MarketDetail() {
   const q = useQuery({
     queryKey: ["market", id],
     enabled: !!id,
-    queryFn: () => api.get<Market>(`/v1/markets/${id}`),
+    queryFn: () => api.get<{ market: Market }>(`/v1/markets/${id}`).then((r) => r.market),
   });
 
   useBookChannel(id ?? null, (e) => {
@@ -59,7 +61,8 @@ export default function MarketDetail() {
   const market: Market = { ...q.data, ...live };
   const isCreator = !!me && market.creator?.id === me.id;
   const microcopy = isCreator ? CREATOR_MICROCOPY[market.status] : undefined;
-  const tradable = market.status === "OPEN" || market.status === "MATCHED";
+  const tradable =
+    market.status === "OPEN" || market.status === "MATCHED" || market.status === "SETTLING"; // SETTLING stays tradable
   const canSettle = tradable;
 
   const header = (
@@ -310,7 +313,7 @@ function TopPosts({ marketId }: { marketId: string }) {
     queryFn: () => api.get<Paged<Post>>(`/v1/markets/${marketId}/posts?limit=12`),
   });
 
-  if (q.isLoading) return <Loading />;
+  if (q.isLoading) return <ListRowsSkeleton rows={3} avatarSize={54} />;
   const posts = pageItems<Post>(q.data);
   if (posts.length === 0) {
     return <EmptyState icon="images-outline" title="No posts yet" subtitle="Posts that feature this market show up here." />;
@@ -323,7 +326,7 @@ function TopPosts({ marketId }: { marketId: string }) {
           onPress={() => router.push(`/post/${p.id}` as never)}
           style={{ flexDirection: "row", gap: 10, alignItems: "center", borderWidth: 1, borderColor: t.border, borderRadius: radius.md, padding: 8 }}
         >
-          <Image source={{ uri: p.media[0]?.url }} style={{ width: 54, height: 54, borderRadius: 8, backgroundColor: t.surfaceAlt }} contentFit="cover" />
+          <Image source={{ uri: bestImageUrl(p.media[0], 54) }} style={{ width: 54, height: 54, borderRadius: 8, backgroundColor: t.surfaceAlt }} contentFit="cover" />
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontWeight: "700", fontSize: 13.5 }}>@{p.author.username}</Text>
             <Text style={{ color: t.textDim, fontSize: 12.5 }} numberOfLines={2}>

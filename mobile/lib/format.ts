@@ -39,6 +39,9 @@ export function shortAddress(addr: string | null | undefined): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+// The profile-only display name. Returns the chosen display name, or the
+// username as a fallback, and never a generic "user" placeholder. Use this
+// ONLY on the profile header — everywhere else, show @username directly.
 export function displayName(u: { display_name?: string | null; username?: string | null }): string {
-  return u.display_name?.trim() || u.username || "user";
+  return u.display_name?.trim() || u.username || "";
 }

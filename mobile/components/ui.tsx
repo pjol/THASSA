@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   KeyboardAvoidingView,
@@ -15,8 +14,10 @@ import {
   ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { radius, space, useTheme } from "../lib/theme";
 import { tap } from "../lib/haptics";
+import { LogoSpinner } from "./LogoSpinner";
 
 export { radius, space };
 
@@ -90,7 +91,7 @@ export function Button({
         style,
       ]}
     >
-      {loading ? <ActivityIndicator size="small" color={fg} /> : null}
+      {loading ? <LogoSpinner size={16} color={fg} /> : null}
       <Text style={[{ color: fg, fontWeight: "700", fontSize: small ? 13 : 16 }, textStyle]}>
         {title}
       </Text>
@@ -179,17 +180,49 @@ export function Sheet({
   title?: string;
 }) {
   const t = useTheme();
+  // Custom animation (animationType="none"): the dark backdrop FADES in via
+  // opacity while the content slides up — rather than sliding the whole modal
+  // (backdrop included) up from the bottom, which looked off.
+  const [mounted, setMounted] = useState(visible);
+  const [sheetH, setSheetH] = useState(420);
+  const backdrop = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(1)).current; // 1 = below screen, 0 = in place
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.parallel([
+        Animated.timing(backdrop, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.spring(slide, { toValue: 0, friction: 11, tension: 80, useNativeDriver: true }),
+      ]).start();
+    } else if (mounted) {
+      Animated.parallel([
+        Animated.timing(backdrop, { toValue: 0, duration: 170, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+        Animated.timing(slide, { toValue: 1, duration: 190, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ]).start(({ finished }) => finished && setMounted(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  if (!mounted) return null;
+
+  const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [0, sheetH] });
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="none" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1, justifyContent: "flex-end" }}
       >
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }} />
-        </Pressable>
-        <View
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdrop }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+            <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)" }} />
+          </Pressable>
+        </Animated.View>
+        <Animated.View
+          onLayout={(e) => setSheetH(e.nativeEvent.layout.height + 40)}
           style={{
+            transform: [{ translateY }],
             backgroundColor: t.bg,
             borderTopLeftRadius: radius.xl,
             borderTopRightRadius: radius.xl,
@@ -223,7 +256,7 @@ export function Sheet({
             </Text>
           ) : null}
           {children}
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -361,17 +394,20 @@ export function DoubleTap({
     >
       {children}
       {burst ? (
-        <Animated.Text
+        <Animated.View
           style={{
             position: "absolute",
             alignSelf: "center",
             top: "38%",
-            fontSize: 84,
             transform: [{ scale }],
+            shadowColor: "#000",
+            shadowOpacity: 0.35,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 2 },
           }}
         >
-          ❤️
-        </Animated.Text>
+          <Ionicons name="heart" size={88} color="#FFFFFF" />
+        </Animated.View>
       ) : null}
     </Pressable>
   );

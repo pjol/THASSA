@@ -26,18 +26,43 @@ type UserBrief struct {
 // Profile is the full user page shape.
 type Profile struct {
 	UserBrief
-	Bio              *string   `json:"bio"`
-	Links            []Link    `json:"links"`
-	WalletAddress    *string   `json:"wallet_address"`
-	IsPrivate        bool      `json:"is_private"`
-	TradesVisibility string    `json:"trades_visibility"`
-	FollowerCount    int       `json:"follower_count"`
-	FollowingCount   int       `json:"following_count"`
-	PostCount        int       `json:"post_count"`
+	// Onboarded is true once the user has set a username (there is no separate
+	// column — a set username IS the onboarded state). The app's entry gate
+	// routes to onboarding until this is true.
+	Onboarded        bool     `json:"onboarded"`
+	Bio              *string  `json:"bio"`
+	Links            []string `json:"links"`
+	WalletAddress    *string  `json:"wallet_address"`
+	IsPrivate        bool     `json:"is_private"`
+	TradesVisibility string   `json:"trades_visibility"`
+	// NotificationPrefs is the owner's per-category notification toggles
+	// (missing key = enabled). Populated only on the /v1/me shape, never on
+	// public profiles.
+	NotificationPrefs map[string]bool `json:"notification_prefs,omitempty"`
+	FollowerCount    int      `json:"follower_count"`
+	FollowingCount   int      `json:"following_count"`
+	PostCount        int      `json:"post_count"`
 	// FollowStatus is the caller's relationship: "", "pending", or "accepted".
 	FollowStatus string    `json:"follow_status"`
 	IsMe         bool      `json:"is_me"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+// AdminUser is the compact shape returned by the admin search + warp
+// endpoints (spec §7c.2). Email is admin-visible only.
+type AdminUser struct {
+	ID        uuid.UUID `json:"id"`
+	Username  *string   `json:"username"`
+	Email     *string   `json:"email"`
+	AvatarURL *string   `json:"avatar_url"`
+}
+
+// UsernameReservation is an admin-managed whitelist row (spec §7c): the email
+// permitted to claim `username`. Returned by the admin reservation endpoints.
+type UsernameReservation struct {
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Link is a profile link entry.
@@ -46,19 +71,36 @@ type Link struct {
 	URL   string `json:"url"`
 }
 
+// MediaVariant is one downscaled image rendition in the responsive ladder.
+// The client picks the smallest variant whose width is >= its display
+// width * devicePixelRatio (falling back to the largest when none qualifies).
+type MediaVariant struct {
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	URL    string `json:"url"`
+	Format string `json:"format"` // webp | jpeg
+}
+
 // Media is an uploaded photo/video attached to a post (or standalone while
 // uploading/processing).
+//
+// Images serve from Variants (a width-ladder of transcoded WebP/JPEG); the
+// original upload is dropped once the ladder is stored, so URL points at a
+// transcoded rendition. Video serves from HLSURL (adaptive master playlist)
+// with PosterURL as the still thumbnail; Variants is empty for video.
 type Media struct {
-	ID         uuid.UUID `json:"id"`
-	Kind       string    `json:"kind"` // image | video
-	URL        string    `json:"url"`
-	VariantURL *string   `json:"variant_url,omitempty"` // feed-size image
-	HLSURL     *string   `json:"hls_url,omitempty"`     // hls/{id}/master.m3u8
-	Width      *int      `json:"width"`
-	Height     *int      `json:"height"`
-	DurationMS *int      `json:"duration_ms"`
-	Status     string    `json:"status"` // uploading | processing | ready | failed
-	Position   int       `json:"position"`
+	ID         uuid.UUID      `json:"id"`
+	Kind       string         `json:"kind"` // image | video
+	URL        string         `json:"url"`
+	VariantURL *string        `json:"variant_url,omitempty"` // feed-size image (mid variant, back-compat)
+	HLSURL     *string        `json:"hls_url,omitempty"`     // hls/{id}/master.m3u8
+	PosterURL  *string        `json:"poster_url,omitempty"`  // video still thumbnail
+	Variants   []MediaVariant `json:"variants"`              // image ladder (empty for video)
+	Width      *int           `json:"width"`
+	Height     *int           `json:"height"`
+	DurationMS *int           `json:"duration_ms"`
+	Status     string         `json:"status"` // uploading | processing | ready | failed
+	Position   int            `json:"position"`
 }
 
 // MarketSummary is the market card attached to posts and list rows.
@@ -72,7 +114,19 @@ type MarketSummary struct {
 	YesPriceCents *int      `json:"yes_price_cents"`
 	NoPriceCents  *int      `json:"no_price_cents"`
 	Volume        int64     `json:"volume"`
-	CreatedAt     time.Time `json:"created_at"`
+	// ExpiresAt: past this instant an unsettled market auto-resolves 50/50;
+	// ResolvedFifty marks that outcome (SETTLED with no winning direction).
+	ExpiresAt     *time.Time `json:"expires_at"`
+	ResolvedFifty bool       `json:"resolved_fifty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// GeneratedCandidate is a stored, not-yet-started generation candidate
+// (saved from every user's generation queries), surfaced in attach-market
+// search as a "start market" suggestion.
+type GeneratedCandidate struct {
+	ID uuid.UUID `json:"id"`
+	MarketCandidate
 }
 
 // SourceRef is one disclosed resolution source (spec §6.5b).
@@ -90,12 +144,33 @@ type Market struct {
 	Category          string      `json:"category"`
 	Rule              string      `json:"rule"` // single | majority
 	Sources           []SourceRef `json:"sources"`
-	Creator           UserBrief `json:"creator"`
-	CreatorFeeAccrued int64     `json:"creator_fee_accrued"`
-	CommentCount      int       `json:"comment_count"`
-	LikeCount         int       `json:"like_count"`
-	LikedByMe         bool      `json:"liked_by_me"`
-	MyPosition        *Position `json:"my_position,omitempty"`
+	Creator           UserBrief   `json:"creator"`
+	CreatorFeeAccrued int64       `json:"creator_fee_accrued"`
+	CommentCount      int         `json:"comment_count"`
+	LikeCount         int         `json:"like_count"`
+	LikedByMe         bool        `json:"liked_by_me"`
+	MyPosition        *Position   `json:"my_position,omitempty"`
+}
+
+// Mention is a resolved @-mention in a post caption (spec §7d.2). start/len are
+// the character offsets of the @name token in the caption; username /
+// display_name / avatar_url are resolved to the mentioned user's CURRENT
+// profile per id, so renames propagate to already-published posts.
+type Mention struct {
+	UserID      uuid.UUID `json:"user_id"`
+	Start       int       `json:"start"`
+	Len         int       `json:"len"`
+	Username    *string   `json:"username"`
+	DisplayName *string   `json:"display_name"`
+	AvatarURL   *string   `json:"avatar_url"`
+}
+
+// MentionInput is the write-side @-mention wire shape sent alongside a post
+// caption: [{user_id, start, len}] (character offsets into the caption).
+type MentionInput struct {
+	UserID uuid.UUID `json:"user_id"`
+	Start  int       `json:"start"`
+	Len    int       `json:"len"`
 }
 
 // PositionBadge is the compact holder position shown on post cards.
@@ -113,9 +188,12 @@ type Post struct {
 	Caption *string   `json:"caption"`
 	Kind    string    `json:"kind"` // photo | video | reel
 	Media   []Media   `json:"media"`
+	// Mentions are the resolved @-mentions in the caption (spec §7d.2); always
+	// present (empty slice when none) so clients can iterate unconditionally.
+	Mentions []Mention `json:"mentions"`
 	// AffiliateID is the onchain uint256 affiliatePostId (= uint256 of the
 	// post uuid bytes), decimal-encoded (uint256 exceeds JSON number range).
-	AffiliateID string `json:"affiliate_id"`
+	AffiliateID  string         `json:"affiliate_id"`
 	LikeCount    int            `json:"like_count"`
 	CommentCount int            `json:"comment_count"`
 	LikedByMe    bool           `json:"liked_by_me"`
@@ -129,42 +207,63 @@ type Post struct {
 
 // Story is a 24h ephemeral media item.
 type Story struct {
-	ID         uuid.UUID `json:"id"`
-	Author     UserBrief `json:"author"`
-	Kind       string    `json:"kind"`
-	URL        string    `json:"url"`
-	HLSURL     *string   `json:"hls_url,omitempty"`
-	ViewCount  int       `json:"view_count"`
-	ViewedByMe bool      `json:"viewed_by_me"`
-	CreatedAt  time.Time `json:"created_at"`
-	ExpiresAt  time.Time `json:"expires_at"`
+	ID         uuid.UUID      `json:"id"`
+	Author     UserBrief      `json:"author"`
+	Kind       string         `json:"kind"`
+	URL        string         `json:"url"`
+	HLSURL     *string        `json:"hls_url,omitempty"`
+	PosterURL  *string        `json:"poster_url,omitempty"`
+	Variants   []MediaVariant `json:"variants"`
+	ViewCount  int            `json:"view_count"`
+	ViewedByMe bool           `json:"viewed_by_me"`
+	CreatedAt  time.Time      `json:"created_at"`
+	ExpiresAt  time.Time      `json:"expires_at"`
 }
 
 // Comment attaches to a post OR a market; replies via parent_id.
 type Comment struct {
-	ID        uuid.UUID  `json:"id"`
-	PostID    *uuid.UUID `json:"post_id"`
-	MarketID  *uuid.UUID `json:"market_id"`
-	ParentID  *uuid.UUID `json:"parent_id"`
-	Author    UserBrief  `json:"author"`
-	Body      string     `json:"body"`
-	LikeCount int        `json:"like_count"`
-	LikedByMe bool       `json:"liked_by_me"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID       uuid.UUID  `json:"id"`
+	PostID   *uuid.UUID `json:"post_id"`
+	MarketID *uuid.UUID `json:"market_id"`
+	ParentID *uuid.UUID `json:"parent_id"`
+	Author   UserBrief  `json:"author"`
+	Body     string     `json:"body"`
+	// Mentions are the resolved @-mentions in the body (spec §7d.2); always
+	// present (empty slice when none), same shape as Post.Mentions.
+	Mentions  []Mention `json:"mentions"`
+	LikeCount int       `json:"like_count"`
+	LikedByMe bool      `json:"liked_by_me"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Message is a DM message (text and/or one media attachment).
 type Message struct {
-	ID             uuid.UUID  `json:"id"`
-	ConversationID uuid.UUID  `json:"conversation_id"`
-	Sender         UserBrief  `json:"sender"`
-	Body           *string    `json:"body"`
-	MediaKind      *string    `json:"media_kind"`
-	MediaURL       *string    `json:"media_url"`
-	HLSURL         *string    `json:"hls_url,omitempty"`
-	ReplyToID      *uuid.UUID `json:"reply_to_id"`
-	Reactions      map[string]int `json:"reactions"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID             uuid.UUID      `json:"id"`
+	ConversationID uuid.UUID      `json:"conversation_id"`
+	Sender         UserBrief      `json:"sender"`
+	Body           *string        `json:"body"`
+	MediaKind      *string        `json:"media_kind"`
+	MediaURL       *string        `json:"media_url"`
+	HLSURL         *string        `json:"hls_url,omitempty"`
+	PosterURL      *string        `json:"poster_url,omitempty"`
+	Variants       []MediaVariant `json:"variants,omitempty"`
+	ReplyToID      *uuid.UUID     `json:"reply_to_id"`
+	// A post shared into the thread, rendered as a tappable post card.
+	// PostID survives post deletion (SET NULL clears it); SharedPost is the
+	// resolved preview and is nil when the post is gone.
+	PostID     *uuid.UUID     `json:"post_id,omitempty"`
+	SharedPost *SharedPost    `json:"shared_post,omitempty"`
+	Reactions  map[string]int `json:"reactions"`
+	CreatedAt  time.Time      `json:"created_at"`
+}
+
+// SharedPost is the compact preview of a post shared into a DM.
+type SharedPost struct {
+	ID          uuid.UUID `json:"id"`
+	Author      UserBrief `json:"author"`
+	Caption     *string   `json:"caption"`
+	ThumbURL    *string   `json:"thumb_url"`
+	MarketTitle *string   `json:"market_title,omitempty"`
 }
 
 // ConversationMember is a thread member with their read state (drives
@@ -188,16 +287,16 @@ type Conversation struct {
 
 // Order uses the one-word state vocabulary verbatim.
 type Order struct {
-	ID           uuid.UUID  `json:"id"`
-	MarketID     uuid.UUID  `json:"market_id"`
-	Side         string     `json:"side"` // yes | no
-	PriceCents   int        `json:"price_cents"`
-	Shares       int64      `json:"shares"`
-	FilledShares int64      `json:"filled_shares"`
-	Status       string     `json:"status"` // SIGNING QUEUED RESTING PARTIAL FILLED CANCELED
-	ChainOrderID *int64     `json:"chain_order_id"`
-	MaxCost      int64      `json:"max_cost"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID           uuid.UUID      `json:"id"`
+	MarketID     uuid.UUID      `json:"market_id"`
+	Side         string         `json:"side"` // yes | no
+	PriceCents   int            `json:"price_cents"`
+	Shares       int64          `json:"shares"`
+	FilledShares int64          `json:"filled_shares"`
+	Status       string         `json:"status"` // SIGNING QUEUED RESTING PARTIAL FILLED CANCELED
+	ChainOrderID *int64         `json:"chain_order_id"`
+	MaxCost      int64          `json:"max_cost"`
+	CreatedAt    time.Time      `json:"created_at"`
 	Market       *MarketSummary `json:"market,omitempty"`
 }
 

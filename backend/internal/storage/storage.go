@@ -19,4 +19,7 @@ type Store interface {
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
 	// Put stores an object.
 	Put(ctx context.Context, key, contentType string, body io.Reader) error
+	// Delete removes a stored object. Deleting a missing key is not an error
+	// (idempotent), so callers can safely re-run.
+	Delete(ctx context.Context, key string) error
 }

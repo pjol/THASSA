@@ -15,8 +15,8 @@ import (
 func (s *Store) CreateStoryFromMedia(ctx context.Context, authorID, mediaID uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO stories (author_id, kind, s3_key, hls_key, width, height, duration_ms)
-		SELECT owner_id, kind, s3_key, hls_key, width, height, duration_ms
+		INSERT INTO stories (author_id, kind, s3_key, hls_key, poster_key, variants, width, height, duration_ms)
+		SELECT owner_id, kind, s3_key, hls_key, poster_key, variants, width, height, duration_ms
 		FROM post_media WHERE id=$1 AND owner_id=$2
 		RETURNING id`, mediaID, authorID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -30,7 +30,7 @@ func (s *Store) CreateStoryFromMedia(ctx context.Context, authorID, mediaID uuid
 // client-side into rails. Ordered by author then recency.
 func (s *Store) ActiveStories(ctx context.Context, viewerID uuid.UUID) ([]structs.Story, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT st.id, `+userBriefCols+`, st.kind, st.s3_key, st.hls_key,
+		SELECT st.id, `+userBriefCols+`, st.kind, st.s3_key, st.hls_key, st.poster_key, st.variants,
 		       (SELECT count(*) FROM story_views sv WHERE sv.story_id=st.id),
 		       EXISTS(SELECT 1 FROM story_views sv WHERE sv.story_id=st.id AND sv.viewer_id=$1),
 		       st.created_at, st.expires_at
@@ -48,14 +48,22 @@ func (s *Store) ActiveStories(ctx context.Context, viewerID uuid.UUID) ([]struct
 	for rows.Next() {
 		var st structs.Story
 		var key string
-		var hlsKey *string
+		var hlsKey, posterKey *string
+		var variantsJSON []byte
 		if err := rows.Scan(&st.ID, &st.Author.ID, &st.Author.Username, &st.Author.DisplayName,
-			&st.Author.AvatarURL, &st.Kind, &key, &hlsKey, &st.ViewCount, &st.ViewedByMe,
-			&st.CreatedAt, &st.ExpiresAt); err != nil {
+			&st.Author.AvatarURL, &st.Kind, &key, &hlsKey, &posterKey, &variantsJSON,
+			&st.ViewCount, &st.ViewedByMe, &st.CreatedAt, &st.ExpiresAt); err != nil {
 			return nil, err
 		}
+		st.Variants = s.resolveVariants(variantsJSON)
 		st.URL = s.url(key)
+		if st.Kind == "image" {
+			if u := midVariantURL(st.Variants); u != "" {
+				st.URL = u // original dropped after transcoding; serve a variant
+			}
+		}
 		st.HLSURL = s.urlPtr(hlsKey)
+		st.PosterURL = s.urlPtr(posterKey)
 		out = append(out, st)
 	}
 	return out, rows.Err()

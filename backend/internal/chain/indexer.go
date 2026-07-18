@@ -265,7 +265,48 @@ func (ix *Indexer) onOrderPlaced(ctx context.Context, p map[string]any) {
 			"order_id": orderID, "market_id": marketID, "status": "RESTING",
 		})
 	}
+	// Entry stats + following.large_entry trigger (spec §7d.4/§7d.5). An entry
+	// is an order placement; the actor is the maker resolved to a platform user
+	// (captures direct-onchain entries too). Runs exactly once per event
+	// (handleLog gates on RecordChainEvent), so the O(1) upserts don't double
+	// count. The threshold is checked against each follower's aggregate BEFORE
+	// this entry is folded in.
+	if actorID, aerr := ix.db.UserIDByWallet(ctx, maker.Hex()); aerr == nil && actorID != uuid.Nil {
+		notional := entryNotional(side, price, shares)
+		ix.notifyLargeEntry(ctx, actorID, marketID, notional)
+		_ = ix.db.RecordUserEntry(ctx, actorID, notional)
+		_ = ix.db.FanoutEntryToFollowers(ctx, actorID, notional)
+	}
 	ix.refreshBook(ctx, marketID, chainMarketID, 0)
+}
+
+// entryNotional is the unit-agnostic size of an entry: shares × the escrowed
+// price in cents on the maker's side (YES pays p, NO pays 100−p). The
+// large-entry trigger compares ratios, so any consistent unit works.
+func entryNotional(side string, price int, shares int64) int64 {
+	px := int64(price)
+	if side == "no" {
+		px = int64(100 - price)
+	}
+	return shares * px
+}
+
+// notifyLargeEntry finds followers of the actor for whom this entry is >2× their
+// running average across everyone they follow, and notifies them. The fan-out
+// of the aggregate itself is done separately (set-based) in the caller.
+func (ix *Indexer) notifyLargeEntry(ctx context.Context, actorID, marketID uuid.UUID, notional int64) {
+	followers, err := ix.db.LargeEntryFollowers(ctx, actorID, notional, 500)
+	if err != nil || len(followers) == 0 {
+		return
+	}
+	payload := map[string]any{"actor_id": actorID, "market_id": marketID, "size": notional}
+	if brief, err := ix.db.UserBrief(ctx, actorID); err == nil && brief != nil && brief.Username != nil {
+		payload["actor_username"] = *brief.Username
+	}
+	if q, err := ix.db.MarketQuestion(ctx, marketID); err == nil && q != "" {
+		payload["question"] = q
+	}
+	ix.notif.NotifyMany(ctx, followers, notify.KindFollowingLargeEntry, payload)
 }
 
 func (ix *Indexer) onOrderMatched(ctx context.Context, lg types.Log, p map[string]any) {
@@ -304,10 +345,16 @@ func (ix *Indexer) onOrderMatched(ctx context.Context, lg types.Log, p map[strin
 		if takerSide != "" && makerSide != "" && takerSide != makerSide {
 			takerPrice = 100 - price
 		}
-		_ = ix.db.ApplyFillToPosition(ctx, marketID, takerUser, orSide(takerSide, "yes"), takerPrice, shares)
+		prev, cur, perr := ix.db.ApplyFillToPosition(ctx, marketID, takerUser, orSide(takerSide, "yes"), takerPrice, shares)
+		if perr == nil {
+			ix.maybeSwing(ctx, marketID, takerUser, prev, cur)
+		}
 	}
 	if makerUser != uuid.Nil {
-		_ = ix.db.ApplyFillToPosition(ctx, marketID, makerUser, orSide(makerSide, "no"), price, shares)
+		prev, cur, perr := ix.db.ApplyFillToPosition(ctx, marketID, makerUser, orSide(makerSide, "no"), price, shares)
+		if perr == nil {
+			ix.maybeSwing(ctx, marketID, makerUser, prev, cur)
+		}
 	}
 
 	// Volume: each matched pair collateralizes $1/share.
@@ -325,6 +372,25 @@ func (ix *Indexer) onOrderMatched(ctx context.Context, lg types.Log, p map[strin
 			"market_id": marketID, "price_cents": price, "shares": shares,
 		})
 	}
+}
+
+// maybeSwing fires a position.swing notification when a fill moves the holder's
+// position magnitude by >50% (spec §7d.4). Computed from the pre/post share
+// counts returned by ApplyFillToPosition — an O(1) point comparison.
+func (ix *Indexer) maybeSwing(ctx context.Context, marketID, userID uuid.UUID, prevShares, newShares int64) {
+	pct, swung := PositionSwing(prevShares, newShares)
+	if !swung {
+		return
+	}
+	dir := "up"
+	if pct < 0 {
+		dir = "down"
+		pct = -pct
+	}
+	q, _ := ix.db.MarketQuestion(ctx, marketID)
+	ix.notif.Notify(ctx, userID, notify.KindPositionSwing, map[string]any{
+		"market_id": marketID, "question": q, "direction": dir, "pct": pct,
+	})
 }
 
 func orSide(s, def string) string {
@@ -436,32 +502,48 @@ func (ix *Indexer) onMarketSettled(ctx context.Context, p map[string]any) {
 
 // refreshBook recomputes the best-price mirror (chain view first, DB
 // aggregate fallback) and pushes a book delta.
+//
+// yes_price_cents / no_price_cents are ASKS — what a taker pays right now,
+// exactly reflecting the resting book. Buying YES crosses the best resting
+// NO bid at q and the maker's price is locked in, so the taker pays 100−q
+// (e.g. maker bids NO at 40¢ → the YES button shows 60¢; a 62¢-limit YES
+// taker still fills at 60¢ + fee). Symmetric for NO. A side with no
+// opposite-side liquidity has no ask (NULL → "—" in clients).
 func (ix *Indexer) refreshBook(ctx context.Context, marketID uuid.UUID, chainMarketID int64, volumeDelta int64) {
-	var bestYes, bestNo *int
+	var bestYesBid, bestNoBid *int
 	if y, n, err := ix.client.BestPrices(ctx, chainMarketID); err == nil {
 		if y > 0 {
 			v := int(y)
-			bestYes = &v
+			bestYesBid = &v
 		}
 		if n > 0 {
 			v := int(n)
-			bestNo = &v
+			bestNoBid = &v
 		}
 	} else {
 		book, err := ix.db.MarketBook(ctx, marketID)
 		if err == nil {
 			if len(book.Yes) > 0 {
-				bestYes = &book.Yes[0].PriceCents
+				bestYesBid = &book.Yes[0].PriceCents
 			}
 			if len(book.No) > 0 {
-				bestNo = &book.No[0].PriceCents
+				bestNoBid = &book.No[0].PriceCents
 			}
 		}
 	}
-	_ = ix.db.UpdateMarketPrices(ctx, marketID, bestYes, bestNo, volumeDelta)
+	var yesAsk, noAsk *int
+	if bestNoBid != nil {
+		v := 100 - *bestNoBid
+		yesAsk = &v
+	}
+	if bestYesBid != nil {
+		v := 100 - *bestYesBid
+		noAsk = &v
+	}
+	_ = ix.db.UpdateMarketPrices(ctx, marketID, yesAsk, noAsk, volumeDelta)
 	ix.fanout.Publish("book:"+marketID.String(), "book.delta", map[string]any{
 		"market_id":       marketID,
-		"yes_price_cents": bestYes,
-		"no_price_cents":  bestNo,
+		"yes_price_cents": yesAsk,
+		"no_price_cents":  noAsk,
 	})
 }

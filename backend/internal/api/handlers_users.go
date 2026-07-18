@@ -2,13 +2,40 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/pjol/THASSA/backend/internal/auth"
 	"github.com/pjol/THASSA/backend/internal/notify"
 	"github.com/pjol/THASSA/backend/internal/respond"
+	"github.com/pjol/THASSA/backend/internal/structs"
 )
+
+// handleSearchUsers is the @-mention autocomplete (spec §7d.2): trigram search
+// over username + display_name, returning up to ~10 UserBriefs. Authed + per-
+// user rate-limited.
+func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
+	id, _ := auth.FromContext(r.Context())
+	if !s.searchLimiter.Allow(id.UserID.String()) {
+		respond.Error(w, http.StatusTooManyRequests, "rate limit exceeded")
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(q) < 1 {
+		respond.JSON(w, http.StatusOK, map[string]any{"users": []structs.UserBrief{}})
+		return
+	}
+	if len(q) > 100 {
+		q = q[:100]
+	}
+	users, err := s.db.SearchUsers(r.Context(), q, parseLimit(r, 10))
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to search users")
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"users": users})
+}
 
 // handleGetUser returns a user page. Trades visibility is reflected in the
 // payload; a private account's counts are public but content is not.

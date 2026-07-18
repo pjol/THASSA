@@ -3,7 +3,8 @@ import { FlatList, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { EmptyState, ErrorState, Loading } from "../components/states";
+import { ListRowsSkeleton } from "../components/skeletons";
+import { BrandRefreshControl, EmptyState, ErrorState } from "../components/states";
 import { Avatar, Button } from "../components/ui";
 import { useApi } from "../lib/api";
 import { timeAgo } from "../lib/format";
@@ -50,7 +51,7 @@ export default function Notifications() {
     [onUserEvent, qc]
   );
 
-  if (q.isLoading) return <Loading />;
+  if (q.isLoading) return <ListRowsSkeleton rows={9} avatarSize={40} />;
   if (q.isError) return <ErrorState onRetry={() => q.refetch()} />;
   const items = q.data?.pages.flatMap((p) => pageItems<AppNotification>(p)) ?? [];
   const reqs = pageItems<FollowRequest>(requests.data);
@@ -64,11 +65,15 @@ export default function Notifications() {
       renderItem={({ item }) => <NotificationRow n={item} />}
       onEndReached={() => q.hasNextPage && !q.isFetchingNextPage && q.fetchNextPage()}
       onEndReachedThreshold={0.4}
-      refreshing={q.isRefetching && !q.isFetchingNextPage}
-      onRefresh={() => {
-        q.refetch();
-        requests.refetch();
-      }}
+      refreshControl={
+        <BrandRefreshControl
+          refreshing={q.isRefetching && !q.isFetchingNextPage}
+          onRefresh={() => {
+            q.refetch();
+            requests.refetch();
+          }}
+        />
+      }
       ListEmptyComponent={
         reqs.length === 0 ? (
           <EmptyState icon="notifications-outline" title="Nothing yet" subtitle="Likes, fills, and matched bets land here." />
@@ -79,6 +84,7 @@ export default function Notifications() {
   );
 
   function NotificationRow({ n }: { n: AppNotification }) {
+    const who = n.payload.user?.username ? `@${n.payload.user.username}` : "someone";
     const icon: keyof typeof Ionicons.glyphMap =
       n.kind === "market.matched"
         ? "flash"
@@ -88,9 +94,15 @@ export default function Notifications() {
             ? "chatbubble"
             : n.kind === "post.liked"
               ? "heart"
-              : n.kind.startsWith("follow")
-                ? "person-add"
-                : "notifications";
+              : n.kind === "post.mention"
+                ? "at"
+                : n.kind === "position.swing"
+                  ? "trending-up"
+                  : n.kind === "following.large_entry"
+                    ? "rocket"
+                    : n.kind.startsWith("follow")
+                      ? "person-add"
+                      : "notifications";
     const title =
       n.payload.title ??
       (n.kind === "market.matched"
@@ -98,8 +110,16 @@ export default function Notifications() {
         : n.kind === "order.filled"
           ? "Order filled"
           : n.kind === "post.liked"
-            ? `@${n.payload.user?.username ?? "someone"} liked your post`
-            : n.kind);
+            ? `${who} liked your post`
+            : n.kind === "post.mention"
+              ? `${who} mentioned you`
+              : n.kind === "position.swing"
+                ? "Your position moved sharply"
+                : n.kind === "following.large_entry"
+                  ? `${who} placed a big bet`
+                  : n.kind === "follow.new" || n.kind === "follow"
+                    ? `${who} started following you`
+                    : n.kind);
     const href = n.payload.market_id
       ? `/market/${n.payload.market_id}`
       : n.payload.post_id

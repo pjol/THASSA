@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/google/uuid"
 
@@ -53,6 +54,8 @@ Rules (non-negotiable):
 - FIRST call the search_markets tool with the topic to find existing markets. You may only propose candidates whose settlement OUTCOME differs from every existing market. If the topic is fully covered by an existing market, return zero candidates.
 - For each candidate, call resolve_sources with the settlement question to learn its category, rule, and authoritative sources. Settlement must resolve ONLY against those registry sources.
 - Each settlement question must be an objective, verifiable statement with an explicit resolution date/deadline and a single unambiguous YES/NO outcome, answerable from the bound sources.
+- Sports candidates must be about ONE specific game, fully pinned down: name both teams/competitors, the scheduled game date (and time when known), and the competition. NEVER draft relative sports questions like "their next game", "the upcoming match", or "this weekend's game" — if you cannot identify the specific opponent and date, do not draft the candidate.
+- Every settlement question must name resolution specifics precisely (exact metric, exact threshold, exact deadline, exact event). Vague or relative phrasing ("soon", "next", "around") disqualifies the candidate — drop it rather than guessing.
 - Never draft markets about: the Thassa platform itself, oracle/settlement mechanics, payouts to specific people or addresses, illegal activity, or private individuals.
 - Respond with the final JSON only when you are done calling tools.`
 
@@ -91,6 +94,9 @@ func (s *Service) Generate(ctx context.Context, userID uuid.UUID, rawInput strin
 	}
 
 	_ = s.db.LogMarketGeneration(ctx, userID, rawInput, clean, out.Candidates, false)
+	// Persist for cross-user reuse: later attach-market searches surface these
+	// as "start market" suggestions without another generation round-trip.
+	s.db.SaveGeneratedCandidates(ctx, userID, out.Candidates)
 	return out, nil
 }
 
@@ -210,6 +216,17 @@ func (s *Service) finalizeCandidate(ctx context.Context, d draft) (*structs.Mark
 	if err != nil {
 		return nil, false
 	}
+	// HARD RULE: every market must carry settlement sources. A candidate the
+	// registry cannot bind to at least one source (or a consistent rule) is
+	// thrown out and never shown to the user.
+	if len(sq.Sources) == 0 || sq.Rule == "" {
+		return nil, false
+	}
+	// Sports questions must be game-specific: a concrete date pins the game.
+	// Relative phrasings ("next game", "upcoming") are never acceptable.
+	if sq.Category == "sports" && !hasConcreteDate(d.SettlementQuestion) {
+		return nil, false
+	}
 
 	cand := &structs.MarketCandidate{
 		Title:              d.Title,
@@ -235,6 +252,17 @@ func (s *Service) finalizeCandidate(ctx context.Context, d draft) (*structs.Mark
 	}
 	return cand, true
 }
+
+// concreteDateRE matches an explicit calendar date in a settlement question:
+// ISO (2026-07-18), US-ish (7/18/2026), or written (July 18, 2026 / 18 July
+// 2026). Sports questions without one are relative ("their next game") and
+// get thrown out.
+var concreteDateRE = regexp.MustCompile(`(?i)\b(\d{4}-\d{2}-\d{2}` +
+	`|\d{1,2}/\d{1,2}/\d{4}` +
+	`|(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(st|nd|rd|th)?,?\s+\d{4}` +
+	`|\d{1,2}(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december),?\s+\d{4})\b`)
+
+func hasConcreteDate(q string) bool { return concreteDateRE.MatchString(q) }
 
 // llmSaysDuplicate is the LLM dedup pass for borderline similarity: does the
 // candidate settle on the same outcome as the existing market?

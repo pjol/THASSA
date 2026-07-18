@@ -17,7 +17,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const privyIssuer = "https://auth.privy.io"
+// privyIssuer is the `iss` claim value carried in Privy access tokens — it is
+// the bare "privy.io", NOT the API host. Verifying against the API URL rejects
+// every valid token (401 on all authed requests).
+const privyIssuer = "privy.io"
+
+// privyAPIHost is where the JWKS and user API live (distinct from the iss claim).
+const privyAPIHost = "https://auth.privy.io"
 
 // PrivyVerifier verifies Privy access tokens fully locally: ES256 signature
 // against the app's pinned verification key (PRIVY_VERIFICATION_KEY, the
@@ -44,7 +50,7 @@ type PrivyVerifier struct {
 func NewPrivyVerifier(appID, verificationKeyPEM string) (*PrivyVerifier, error) {
 	v := &PrivyVerifier{
 		appID:   appID,
-		jwksURL: fmt.Sprintf("%s/api/v1/apps/%s/jwks.json", privyIssuer, appID),
+		jwksURL: fmt.Sprintf("%s/api/v1/apps/%s/jwks.json", privyAPIHost, appID),
 		client:  &http.Client{Timeout: 10 * time.Second},
 		keys:    map[string]*ecdsa.PublicKey{},
 	}
@@ -117,7 +123,49 @@ func (p *PrivyVerifier) Verify(ctx context.Context, token string) (*Claims, erro
 	if sub == "" {
 		return nil, ErrUnauthorized
 	}
-	return &Claims{Subject: sub, Wallet: walletClaim(mc)}, nil
+	email := emailClaim(mc)
+	return &Claims{
+		Subject:       sub,
+		Wallet:        walletClaim(mc),
+		Email:         email,
+		EmailVerified: email != "", // present in the verified token ⇒ trusted
+	}, nil
+}
+
+// emailClaim extracts the user's email from the token's custom claims. Privy
+// may encode it as a top-level email/email_address claim or as a linked
+// account with type "email" inside linked_accounts (mirrors walletClaim).
+func emailClaim(mc jwt.MapClaims) string {
+	if e, _ := mc["email"].(string); e != "" {
+		return e
+	}
+	if e, _ := mc["email_address"].(string); e != "" {
+		return e
+	}
+	// linked_accounts may be a JSON string or an array of objects.
+	var accounts []map[string]any
+	switch v := mc["linked_accounts"].(type) {
+	case string:
+		_ = json.Unmarshal([]byte(v), &accounts)
+	case []any:
+		for _, e := range v {
+			if m, ok := e.(map[string]any); ok {
+				accounts = append(accounts, m)
+			}
+		}
+	}
+	for _, a := range accounts {
+		if typ, _ := a["type"].(string); typ == "email" {
+			// Privy stores the value under "address"; tolerate "email" too.
+			if addr, _ := a["address"].(string); addr != "" {
+				return addr
+			}
+			if addr, _ := a["email"].(string); addr != "" {
+				return addr
+			}
+		}
+	}
+	return ""
 }
 
 // walletClaim extracts the linked/embedded wallet address from the token's

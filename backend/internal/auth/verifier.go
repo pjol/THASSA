@@ -11,6 +11,11 @@ type Claims struct {
 	Subject string
 	// Wallet is the linked/embedded wallet address claim, if present.
 	Wallet string
+	// Email is the email claim from the verified token, if present.
+	Email string
+	// EmailVerified is true when Email came from the verified token (spec
+	// §7c.1 source 1): such an email is trusted for admin matching.
+	EmailVerified bool
 }
 
 // ErrUnauthorized is returned for any invalid, expired, or malformed token.

@@ -10,10 +10,28 @@ import { useSession } from "@/providers/SessionProvider";
 import { useApi, errorMessage } from "@/lib/api";
 import { useToast } from "@/providers/ToastProvider";
 import { Avatar } from "@/components/Avatar";
-import { CameraIcon, Spinner } from "@/components/icons";
+import { CameraIcon, ChevronLeftIcon, Spinner } from "@/components/icons";
+import { LogoSpinner } from "@/components/LogoSpinner";
+
+// Validate a profile link. A missing scheme defaults to https; requires an
+// http(s) URL with a real host (dot in it).
+function isValidUrl(raw: string): boolean {
+  const s = raw.includes("://") ? raw : `https://${raw}`;
+  try {
+    const u = new URL(s);
+    return (
+      (u.protocol === "http:" || u.protocol === "https:") &&
+      u.hostname.includes(".")
+    );
+  } catch {
+    return false;
+  }
+}
 
 export default function OnboardingPage() {
-  const { ready, authenticated } = useAuth();
+  const { ready, authenticated, logout } = useAuth();
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const { me, loading, refresh } = useSession();
   const api = useApi();
   const toast = useToast();
@@ -39,6 +57,7 @@ export default function OnboardingPage() {
       setDisplayName((d) => d || me.display_name || "");
       setBio((b) => b || me.bio || "");
       setAvatarUrl((a) => a || me.avatar_url);
+      setLinks((l) => l || me.links?.[0] || "");
     }
   }, [me]);
 
@@ -63,6 +82,11 @@ export default function OnboardingPage() {
       );
       return;
     }
+    const link = links.trim();
+    if (link && !isValidUrl(link)) {
+      toast.error("Invalid link", "Enter a valid URL, e.g. https://example.com");
+      return;
+    }
     setSaving(true);
     try {
       await api.patch("/v1/me", {
@@ -70,10 +94,7 @@ export default function OnboardingPage() {
         display_name: displayName || null,
         bio: bio || null,
         avatar_url: avatarUrl,
-        links: links
-          .split(/[\n,]/)
-          .map((l) => l.trim())
-          .filter(Boolean),
+        links: link ? [link] : [],
         onboarded: true,
       });
       await refresh();
@@ -88,7 +109,7 @@ export default function OnboardingPage() {
   if (!ready || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg">
-        <Spinner className="text-muted" />
+        <LogoSpinner size={48} />
       </div>
     );
   }
@@ -97,6 +118,14 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center bg-bg px-4 py-10">
       <form onSubmit={submit} className="card w-full max-w-md p-7 shadow-soft">
         <div className="mb-6 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setCancelConfirm(true)}
+            aria-label="Cancel signup and log out"
+            className="-ml-1.5 rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            <ChevronLeftIcon size={22} />
+          </button>
           <Image src="/thassa-logo.svg" alt="" width={36} height={36} />
           <div>
             <h1 className="text-xl font-extrabold text-fg">Set up your profile</h1>
@@ -164,20 +193,68 @@ export default function OnboardingPage() {
         />
 
         <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted">
-          Links <span className="font-normal normal-case">(comma or newline separated)</span>
+          Link
         </label>
-        <textarea
-          className="input mb-6 resize-none"
-          rows={2}
+        <input
+          className="input mb-6"
+          type="url"
+          inputMode="url"
+          autoCapitalize="none"
           value={links}
           onChange={(e) => setLinks(e.target.value)}
-          placeholder="https://…"
+          placeholder="https://example.com"
         />
 
         <button type="submit" disabled={saving || uploading} className="btn-brand w-full !py-3">
           {saving ? <Spinner size={16} /> : "Enter Thassa"}
         </button>
       </form>
+
+      {cancelConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !loggingOut && setCancelConfirm(false)}
+        >
+          <div
+            className="card w-full max-w-sm p-6 shadow-soft"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-extrabold text-fg">Cancel your signup?</h2>
+            <p className="mt-2 text-sm text-muted">
+              Are you sure you want to cancel your signup? You&apos;ll be logged
+              out and your profile won&apos;t be saved.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelConfirm(false)}
+                disabled={loggingOut}
+                className="btn-ghost"
+              >
+                Keep going
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setLoggingOut(true);
+                  try {
+                    await logout();
+                    router.replace("/login");
+                  } catch {
+                    setLoggingOut(false);
+                  }
+                }}
+                disabled={loggingOut}
+                className="btn bg-no text-white hover:bg-no/90"
+              >
+                {loggingOut ? <Spinner size={16} /> : "Log out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

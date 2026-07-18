@@ -16,6 +16,7 @@ import (
 	"github.com/pjol/THASSA/backend/internal/marketsvc"
 	"github.com/pjol/THASSA/backend/internal/mcp"
 	"github.com/pjol/THASSA/backend/internal/onramp"
+	"github.com/pjol/THASSA/backend/internal/push"
 	"github.com/pjol/THASSA/backend/internal/respond"
 	"github.com/pjol/THASSA/backend/internal/sources"
 	"github.com/pjol/THASSA/backend/internal/storage"
@@ -29,10 +30,12 @@ type Server struct {
 	cfg      *config.Config
 	pool     *pgxpool.Pool
 	verifier auth.Verifier
+	privyAPI *auth.PrivyAPI // Privy server API for verified email by DID (§7c)
 	db       *store.Store    // query/repository layer
 	assets   storage.Store   // S3 (prod) or local-dir (dev) object storage
 	hub      *ws.Hub         // this instance's websocket connections
 	fanout   *bus.Fanout     // cross-instance realtime fanout
+	push     *push.Service   // Expo push leg (spec §7d.4); best-effort
 	chain    *chain.Client   // RPC reads (balance, nonces); nil when disabled
 	gate     *chain.Gate     // relayer gas-sponsorship gate (validation here too)
 	markets  *marketsvc.Service
@@ -43,8 +46,9 @@ type Server struct {
 
 	// Per-instance protective limiters for the developer API (§6.9);
 	// correctness-relevant limits (order rates) live in the database.
-	ipLimiter  *rateLimiter
-	keyLimiter *rateLimiter
+	ipLimiter     *rateLimiter
+	keyLimiter    *rateLimiter
+	searchLimiter *rateLimiter // @-mention user search (§7d.2), per user
 }
 
 // Deps carries the constructor dependencies.
@@ -52,10 +56,12 @@ type Deps struct {
 	Cfg      *config.Config
 	Pool     *pgxpool.Pool
 	Verifier auth.Verifier
+	PrivyAPI *auth.PrivyAPI
 	DB       *store.Store
 	Assets   storage.Store
 	Hub      *ws.Hub
 	Fanout   *bus.Fanout
+	Push     *push.Service
 	Chain    *chain.Client
 	Gate     *chain.Gate
 	Markets  *marketsvc.Service
@@ -71,10 +77,12 @@ func New(d Deps) *Server {
 		cfg:      d.Cfg,
 		pool:     d.Pool,
 		verifier: d.Verifier,
+		privyAPI: d.PrivyAPI,
 		db:       d.DB,
 		assets:   d.Assets,
 		hub:      d.Hub,
 		fanout:   d.Fanout,
+		push:     d.Push,
 		chain:    d.Chain,
 		gate:     d.Gate,
 		markets:  d.Markets,
@@ -83,8 +91,9 @@ func New(d Deps) *Server {
 		onramp:   d.Onramp,
 		local:    d.Local,
 
-		ipLimiter:  newRateLimiter(120, time.Minute), // public market data per IP
-		keyLimiter: newRateLimiter(300, time.Minute), // keyed requests per key
+		ipLimiter:     newRateLimiter(120, time.Minute), // public market data per IP
+		keyLimiter:    newRateLimiter(300, time.Minute), // keyed requests per key
+		searchLimiter: newRateLimiter(60, time.Minute),  // @-mention search per user
 	}
 	// WS per-channel authorization (§8.1: re-checked server-side with the
 	// connection's authenticated user).
@@ -136,12 +145,14 @@ func (s *Server) Router() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(s.privyAuth)        // verify the Privy access token (ES256/JWKS)
 		r.Use(s.resolveIdentity)  // lazily provision the users row, attach Identity
+		r.Use(s.warp)             // admin impersonation + read-only guard (§7c.2)
 		r.Use(s.idempotency)      // Idempotency-Key replay/conflict handling (§6.7)
 
 		// Self / settings / follow requests.
 		r.Get("/v1/me", s.handleGetMe)
 		r.Patch("/v1/me", s.handleUpdateMe)
 		r.Patch("/v1/me/settings", s.handleUpdateSettings)
+		r.Post("/v1/me/wallet", s.handleLinkWallet)
 		r.Post("/v1/me/avatar", s.handleSetAvatar)
 		r.Get("/v1/me/badges", s.handleBadges)
 		r.Get("/v1/me/follow-requests", s.handleListFollowRequests)
@@ -151,6 +162,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/v1/me/push-token", s.handleRemovePushToken)
 
 		// Users & follows.
+		r.Get("/v1/users/search", s.handleSearchUsers) // @-mention autocomplete (§7d.2)
 		r.Get("/v1/users/{username}", s.handleGetUser)
 		r.Get("/v1/users/{username}/posts", s.handleUserPosts)
 		r.Get("/v1/users/{username}/trades", s.handleUserTrades)
@@ -224,13 +236,27 @@ func (s *Server) Router() http.Handler {
 		r.Get("/v1/notifications", s.handleListNotifications)
 		r.Post("/v1/notifications/read", s.handleMarkNotificationsRead)
 
+		// Admin & warp (spec §7c.2): real-admin-gated, never warp-affected,
+		// and exempt from the read-only-while-warped guard.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAdmin)
+			r.Get("/v1/admin/users", s.handleAdminSearchUsers)
+			r.Post("/v1/admin/warp", s.handleAdminWarp)
+			r.Delete("/v1/admin/warp", s.handleAdminUnwarp)
+			// Username reservations / whitelist (spec §7c).
+			r.Get("/v1/admin/username-reservations", s.handleAdminListReservations)
+			r.Post("/v1/admin/username-reservations", s.handleAdminUpsertReservation)
+			r.Delete("/v1/admin/username-reservations/{username}", s.handleAdminDeleteReservation)
+		})
+
 		// Developer API key management (spec §6.9).
 		r.Post("/v1/developer/keys", s.handleCreateAPIKey)
 		r.Get("/v1/developer/keys", s.handleListAPIKeys)
 		r.Delete("/v1/developer/keys/{id}", s.handleRevokeAPIKey)
 
-		// Realtime socket (Privy bearer/?token=, or an API key via
-		// X-Thassa-Key/?key= for book:{marketId} subscriptions).
+		// Realtime socket. Auth is header-only: Authorization: Bearer (mobile)
+		// or the Sec-WebSocket-Protocol header (browsers), carrying a Privy
+		// token or an API key for book:{marketId} subscriptions.
 		r.Get("/v1/ws", s.handleWS)
 	})
 

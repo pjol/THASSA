@@ -62,7 +62,10 @@ async function connect() {
   if (!shouldRun || ws) return;
   const token = tokenGetter ? await tokenGetter() : null;
   if (!shouldRun || !token) return;
-  const socket = new WebSocket(`${WS_BASE}/v1/ws?token=${encodeURIComponent(token)}`);
+  // Auth rides the Sec-WebSocket-Protocol header (sentinel + token), never a
+  // query param, so the token can't leak into URLs or logs. The server echoes
+  // only the "thassa-bearer" sentinel back.
+  const socket = new WebSocket(`${WS_BASE}/v1/ws`, ["thassa-bearer", token]);
   ws = socket;
   socket.onopen = () => {
     isOpen = true;

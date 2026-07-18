@@ -23,6 +23,7 @@ import (
 	"github.com/pjol/THASSA/backend/internal/media"
 	"github.com/pjol/THASSA/backend/internal/notify"
 	"github.com/pjol/THASSA/backend/internal/onramp"
+	"github.com/pjol/THASSA/backend/internal/push"
 	"github.com/pjol/THASSA/backend/internal/sources"
 	"github.com/pjol/THASSA/backend/internal/storage"
 	"github.com/pjol/THASSA/backend/internal/store"
@@ -89,7 +90,10 @@ func main() {
 		log.Fatalf("bus subscribe: %v", err)
 	}
 
-	notifier := notify.New(dbStore, fanout)
+	// Push leg (spec §7d.4): Expo delivery, best-effort and non-blocking. No
+	// API key needed; shares the store for token lookup + pruning.
+	pusher := push.New(dbStore)
+	notifier := notify.New(dbStore, fanout, pusher)
 
 	// Source registry + MCP server (used in-process by the generation agent
 	// and remotely by oracle nodes with MCP_NODE_TOKEN).
@@ -149,14 +153,24 @@ func main() {
 		log.Printf("privy auth: no PRIVY_VERIFICATION_KEY set — falling back to JWKS callout (pin the key for production)")
 	}
 
+	// Privy server API client (spec §7c.1): resolves a user's verified email by
+	// DID when PRIVY_APP_SECRET is set, enabling verified admin-email matching
+	// in production. Inert (email from token claim only) when unset.
+	privyAPI := auth.NewPrivyAPI(cfg.PrivyAppID, cfg.PrivyAppSecret)
+	if privyAPI.Enabled() {
+		log.Printf("privy api: enabled (verified email resolution by DID)")
+	}
+
 	srv := api.New(api.Deps{
 		Cfg:      cfg,
 		Pool:     pool,
 		Verifier: verifier,
+		PrivyAPI: privyAPI,
 		DB:       dbStore,
 		Assets:   assets,
 		Hub:      hub,
 		Fanout:   fanout,
+		Push:     pusher,
 		Chain:    chainClient,
 		Gate:     gate,
 		Markets:  marketSvc,

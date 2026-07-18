@@ -109,6 +109,7 @@ type sendMessageRequest struct {
 	Body      *string `json:"body"`
 	MediaID   *string `json:"media_id"`
 	ReplyToID *string `json:"reply_to_id"`
+	PostID    *string `json:"post_id"` // share a post into the thread
 }
 
 // handleSendMessage sends text and/or one media attachment, fanning out over
@@ -123,8 +124,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if (req.Body == nil || *req.Body == "") && (req.MediaID == nil || *req.MediaID == "") {
-		respond.Error(w, http.StatusBadRequest, "message needs text or media")
+	if (req.Body == nil || *req.Body == "") && (req.MediaID == nil || *req.MediaID == "") &&
+		(req.PostID == nil || *req.PostID == "") {
+		respond.Error(w, http.StatusBadRequest, "message needs text, media, or a shared post")
 		return
 	}
 	if req.Body != nil && len(*req.Body) > 4000 {
@@ -148,8 +150,17 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		replyToID = &rid
 	}
+	var postID *uuid.UUID
+	if req.PostID != nil && *req.PostID != "" {
+		pid, err := uuid.Parse(*req.PostID)
+		if err != nil {
+			respond.Error(w, http.StatusBadRequest, "invalid post id")
+			return
+		}
+		postID = &pid
+	}
 
-	msg, err := s.db.SendMessage(r.Context(), convID, userID, req.Body, mediaID, replyToID)
+	msg, err := s.db.SendMessage(r.Context(), convID, userID, req.Body, mediaID, replyToID, postID)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "failed to send message")
 		return
@@ -159,6 +170,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	s.fanout.Publish("dm:"+convID.String(), "message.new", msg)
 	if memberIDs, err := s.db.ConversationMemberIDs(r.Context(), convID); err == nil {
 		preview := "📷 Media"
+		if postID != nil {
+			preview = "Shared a post"
+		}
 		if req.Body != nil && *req.Body != "" {
 			preview = *req.Body
 			if len(preview) > 120 {

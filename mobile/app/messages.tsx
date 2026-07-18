@@ -2,7 +2,8 @@ import React from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { EmptyState, ErrorState, Loading } from "../components/states";
+import { ListRowsSkeleton } from "../components/skeletons";
+import { BrandRefreshControl, EmptyState, ErrorState } from "../components/states";
 import { Avatar } from "../components/ui";
 import { useApi } from "../lib/api";
 import { timeAgo } from "../lib/format";
@@ -39,7 +40,7 @@ export default function Messages() {
     if (e.type === "message.new") q.refetch();
   });
 
-  if (q.isLoading) return <Loading />;
+  if (q.isLoading) return <ListRowsSkeleton rows={8} avatarSize={52} />;
   if (q.isError) return <ErrorState onRetry={() => q.refetch()} />;
   const conversations = pageItems<Conversation>(q.data);
 
@@ -48,8 +49,7 @@ export default function Messages() {
       style={{ backgroundColor: t.bg }}
       data={conversations}
       keyExtractor={(c) => c.id}
-      refreshing={q.isRefetching}
-      onRefresh={() => q.refetch()}
+      refreshControl={<BrandRefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} />}
       ListEmptyComponent={
         <EmptyState icon="chatbubbles-outline" title="No messages yet" subtitle="Say hi to someone from their profile." />
       }
@@ -69,7 +69,9 @@ export default function Messages() {
                 {other?.display_name || other?.username || "Conversation"}
               </Text>
               <Text style={{ color: unread ? t.text : t.textDim, fontSize: 13, fontWeight: unread ? "600" : "400" }} numberOfLines={1}>
-                {last ? (last.body ?? (last.media ? "📎 Attachment" : "")) : "Start the conversation"}
+                {last
+                  ? (last.body ?? (last.shared_post || last.post_id ? "Shared a post" : last.media ? "📎 Attachment" : ""))
+                  : "Start the conversation"}
               </Text>
             </View>
             <View style={{ alignItems: "flex-end", gap: 5 }}>

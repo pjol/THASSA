@@ -76,5 +76,18 @@ func (s *LocalStore) Put(_ context.Context, key, _ string, body io.Reader) error
 	return err
 }
 
+// Delete removes a stored object. A missing file is not an error (idempotent),
+// mirroring S3 DeleteObject so the drop-original step can be safely re-run.
+func (s *LocalStore) Delete(_ context.Context, key string) error {
+	p, err := s.path(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // Dir returns the root upload directory (for the static file server).
 func (s *LocalStore) Dir() string { return s.dir }

@@ -490,9 +490,14 @@ func (s *Store) UpdateMarketPrices(ctx context.Context, marketID uuid.UUID, best
 }
 
 // ApplyFillToPosition upserts the (market,user,side) position with a
-// volume-weighted average price.
-func (s *Store) ApplyFillToPosition(ctx context.Context, marketID, userID uuid.UUID, side string, priceCents int, shares int64) error {
-	_, err := s.pool.Exec(ctx, `
+// volume-weighted average price. It returns the position's share magnitude
+// BEFORE and AFTER the fill so the indexer can detect a >50% swing
+// (spec §7d.4 position.swing). prevShares is 0 for a brand-new position.
+func (s *Store) ApplyFillToPosition(ctx context.Context, marketID, userID uuid.UUID, side string, priceCents int, shares int64) (prevShares, newShares int64, err error) {
+	err = s.pool.QueryRow(ctx, `
+		WITH prev AS (
+			SELECT shares FROM positions WHERE market_id=$1 AND user_id=$2 AND side=$3
+		)
 		INSERT INTO positions (market_id, user_id, side, shares, avg_price_cents)
 		VALUES ($1,$2,$3,$4,$5)
 		ON CONFLICT (market_id, user_id, side) DO UPDATE SET
@@ -501,9 +506,83 @@ func (s *Store) ApplyFillToPosition(ctx context.Context, marketID, userID uuid.U
 				     / (positions.shares + EXCLUDED.shares)
 				ELSE 0 END,
 			shares = positions.shares + EXCLUDED.shares,
-			updated_at = now()`,
-		marketID, userID, side, shares, priceCents)
+			updated_at = now()
+		RETURNING COALESCE((SELECT shares FROM prev), 0), positions.shares`,
+		marketID, userID, side, shares, priceCents).Scan(&prevShares, &newShares)
+	return prevShares, newShares, err
+}
+
+// RecordUserEntry folds one entry (order placement, spec §7d.5) into the
+// user's running stats — an O(1) upsert. notional is unit-agnostic
+// (shares × effective-price-cents); the trigger compares ratios.
+func (s *Store) RecordUserEntry(ctx context.Context, userID uuid.UUID, notional int64) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO user_entry_stats (user_id, entry_count, notional_sum)
+		VALUES ($1, 1, $2)
+		ON CONFLICT (user_id) DO UPDATE SET
+			entry_count  = user_entry_stats.entry_count + 1,
+			notional_sum = user_entry_stats.notional_sum + $2,
+			updated_at   = now()`, userID, notional)
 	return err
+}
+
+// LargeEntryFollowers returns the accepted followers of actorID for whom this
+// entry is "large" — size > 2 × the running average entry across everyone they
+// follow — evaluated against each follower's aggregate BEFORE this entry is
+// folded in (spec §7d.4). O(1) per follower via the follow_entry_agg PK; the
+// bound (LIMIT) caps the notification fan-out per entry.
+func (s *Store) LargeEntryFollowers(ctx context.Context, actorID uuid.UUID, notional int64, limit int) ([]uuid.UUID, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT f.follower_id
+		FROM follows f
+		JOIN follow_entry_agg fa ON fa.follower_id = f.follower_id
+		WHERE f.followee_id = $1 AND f.status = 'accepted'
+		  AND fa.following_entry_count > 0
+		  AND $2::numeric > 2 * (fa.following_notional_sum / fa.following_entry_count)
+		LIMIT $3`, actorID, notional, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// FanoutEntryToFollowers increments the large-entry aggregate of every accepted
+// follower of actorID (spec §7d.5 bounded fan-out). This is a single set-based
+// UPDATE (the DB does the fan-out); it runs in the indexer/worker, never on a
+// request path.
+func (s *Store) FanoutEntryToFollowers(ctx context.Context, actorID uuid.UUID, notional int64) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO follow_entry_agg (follower_id, following_notional_sum, following_entry_count)
+		SELECT f.follower_id, $2::numeric, 1
+		FROM follows f
+		WHERE f.followee_id = $1 AND f.status = 'accepted'
+		ON CONFLICT (follower_id) DO UPDATE SET
+			following_notional_sum = follow_entry_agg.following_notional_sum + EXCLUDED.following_notional_sum,
+			following_entry_count  = follow_entry_agg.following_entry_count  + EXCLUDED.following_entry_count,
+			updated_at = now()`, actorID, notional)
+	return err
+}
+
+// MarketQuestion returns a market's question text (for notification bodies).
+func (s *Store) MarketQuestion(ctx context.Context, marketID uuid.UUID) (string, error) {
+	var q string
+	err := s.pool.QueryRow(ctx, `SELECT question FROM markets WHERE id=$1`, marketID).Scan(&q)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return q, err
 }
 
 // SettlePositions computes realized PnL for every position of a settled

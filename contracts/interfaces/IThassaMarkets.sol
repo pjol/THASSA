@@ -59,6 +59,7 @@ interface IThassaMarkets {
     error MarketNotSettling(uint256 marketId);
     error MarketNotRedeemable(uint256 marketId, uint8 status);
     error MarketNotVoidable(uint256 marketId, uint8 status);
+    error MarketNotExpired(uint256 marketId);
     error MarketOutcomeNotDeterminable(uint256 marketId);
     error SettlementAlreadyPending(uint256 marketId, uint256 bidId);
     error InvalidSide(uint8 side);

@@ -252,7 +252,13 @@ Tables (all `id uuid pk default gen_random_uuid()`, `created_at/updated_at times
   interface stays pluggable, but every shipped implementation must be real.
 - Notifications: `GET /v1/notifications`, `POST /v1/notifications/read`
 
-### 6.4 WebSocket (`/v1/ws?token=`)
+### 6.4 WebSocket (`/v1/ws`)
+
+Auth is header-only (never a query param): mobile sets `Authorization: Bearer <token>`;
+browsers, which can't set WebSocket headers, send the token via the `Sec-WebSocket-Protocol`
+header as `["thassa-bearer", <token>]` (dev API keys: `["thassa-key", <key>]`). The server echoes
+only the sentinel subprotocol back.
+
 Single connection, JSON frames `{type, channel, payload}`; client subscribes/unsubscribes to:
 - `dm:{conversationId}` — `message.new`, `typing.start/stop` (typing bubbles), `read`
 - `book:{marketId}` — order-book deltas + trades (drives live order book UI)
@@ -388,8 +394,9 @@ API):
   key user's registered wallet. `DELETE /trade-api/v1/orders/{id}`, `GET .../orders`,
   `GET .../positions`, `GET .../fills`, `GET .../balance`. Same relayer gate + idempotency
   semantics as the app path.
-- **WS market data**: the existing `/v1/ws` accepts `X-Thassa-Key` (or `?key=`) auth for
-  `book:{marketId}` subscriptions.
+- **WS market data**: the existing `/v1/ws` accepts `X-Thassa-Key` (or, in browsers, the
+  `Sec-WebSocket-Protocol` header `["thassa-key", <key>]`) auth for `book:{marketId}`
+  subscriptions. Never a query parameter.
 - Errors/envelopes follow the same conventions as `/v1`.
 
 ## 7. Web (Next.js, `web/`) & Mobile (Expo, `mobile/`)
@@ -466,6 +473,140 @@ scroll-snapped sections on the landing page.
   - API reference: every §6.9 endpoint with request/response examples (curl + TypeScript +
     Python), WS subscription protocol, error envelope, idempotency keys, pagination.
 - Docs content must match §6.9/§9 exactly — no invented endpoints.
+
+## 7c. Admin & warp (impersonation)
+
+Email-based admin accounts with a **warp** capability: an admin can "prank ownership" of any
+user (searchable by email) to view the app AS that user. First iteration is view-oriented;
+more admin functionality comes later.
+
+### 7c.1 Admin identity (backend)
+- Config `ADMIN_EMAILS` (CSV, compared case-insensitively).
+- **Email source**, in priority order, resolved at identity resolution and stored on the user:
+  1. an `email` claim in the Privy access token, if present (parsed like the wallet claim);
+  2. Privy's server API by DID when `PRIVY_APP_SECRET` is set — fetch the user, take the verified
+     email linked account. (This is the concrete use for the app secret; add
+     `internal/auth` Privy API client, cached.)
+  3. otherwise unknown.
+- `users` gains `email citext` (nullable, indexed) and `email_verified bool`. Sources (1)/(2)
+  set `email_verified=true`. A client-supplied email (via `PATCH /v1/me`) may set `email` for
+  display/search but leaves `email_verified=false`.
+- **`is_admin = email_verified AND lower(email) ∈ ADMIN_EMAILS`** — verified email only, so a
+  spoofed client email can never grant admin. Dev escape hatch `ADMIN_TRUST_UNVERIFIED_EMAIL`
+  (default false; local dev only, documented insecure) lets unverified email satisfy the match
+  when no app secret is configured.
+- `GET /v1/me` returns `is_admin` for the real user.
+
+### 7c.2 Warp mechanism (backend)
+- Header `X-Thassa-Warp: <targetUserId>` on any request. Middleware, AFTER resolving the real
+  identity: if the header is present AND the real user `is_admin` AND the target user exists →
+  the **effective identity** for §8.1-gated data access becomes the target user; the real admin
+  id is retained in context for audit. Header present but real user not admin → 403.
+- **Read-only impersonation**: while a warp header is active, mutating requests
+  (POST/PUT/PATCH/DELETE, except the warp/admin endpoints themselves) are rejected 403
+  "read-only while warped". Warp changes *whose data you see*, never lets an admin act as a user.
+  (Wallet-signing is impossible anyway — the admin lacks the target's embedded-wallet keys.)
+- All §8.1 store calls use the effective id; admin-only endpoints always use the REAL admin id
+  (warp can't escalate, even into another admin).
+- `GET /v1/me` while warped returns the **effective (target) user** plus a
+  `warp: { active:true, admin_email, viewing:{ id, username, email } }` object so the UI can
+  render the target's app and show a warp bar.
+- Admin endpoints (real-admin-gated, never warp-affected):
+  - `GET /v1/admin/users?q=<email-or-username>` → search, returns `{id, username, email, avatar_url}`.
+  - `POST /v1/admin/warp { user_id }` → validates the target exists; returns its summary (UX
+    convenience; the header is the actual mechanism). `DELETE /v1/admin/warp` is a client no-op
+    (drop the header).
+- Audit: log every warp (`admin_email → target_id`) via the logger; an `admin_audit` table is a
+  later addition.
+
+### 7c.3 Admin UI (web + mobile)
+Admin views are the SAME as normal user views (warp simply changes whose data loads), plus:
+- When `me.is_admin`, an **Admin** entry (in settings) → a user search (by email) listing results
+  with a **Warp** action per user.
+- Warping stores the target id (web: context + localStorage; mobile: context + secure-store) and
+  the API client attaches `X-Thassa-Warp: <id>` to every request; the app refetches `/v1/me` and
+  now renders entirely as the target user.
+- A persistent **warp banner** across the app: "Viewing as @username — Exit warp." Exit clears
+  the target + header and refetches as self. While warped the UI is read-only (mutations are
+  disabled/error via toast per the backend 403); the banner makes the state unmistakable.
+
+## 7d. Social graph, mentions, notifications & performance (batch)
+
+### 7d.1 Username changes — once per week
+- Add `users.username_changed_at timestamptz` (nullable). On `PATCH /v1/me`, when the username
+  actually changes and `now() - username_changed_at < 7 days`, reject `409`
+  `{"error":"you can change your username once a week — try again in N days"}` (compute N). Set
+  `username_changed_at = now()` only when the username changes. First-time set (onboarding) is
+  free (null → allowed).
+
+### 7d.2 @-mentions (stored by user id, rename-safe)
+- Users can @-mention others in **post captions** (and comments). Mentions are stored by **user
+  id**, never by username text, so a rendered mention always shows the mentioned user's CURRENT
+  username and links to their profile even after they rename.
+- **Input**: as the user types `@` + chars, the client calls `GET /v1/users/search?q=` (new:
+  trigram over username + display_name, returns `{users:[UserBrief]}`, public, rate-limited) and
+  shows an autocomplete. Selecting a user records a mention.
+- **Wire format**: the client sends, alongside `caption`, a `mentions: [{ user_id, start, len }]`
+  array (character offsets into the caption identifying each `@name` token). Backend validates
+  offsets/ids, stores the caption verbatim **and** the mentions.
+- **Storage**: `posts.mentions jsonb default '[]'` = `[{user_id, start, len}]`; plus a
+  `post_mentions(post_id, user_id, primary key(post_id,user_id))` join table (indexed on
+  `user_id`) for notification + "tagged" lookups. Same pattern optionally for `comments.mentions`.
+- **Read**: post responses include `mentions: [{user_id, start, len, username, display_name,
+  avatar_url}]` with the **current** resolved profile per id. The client renders the caption,
+  replacing each `[start,len)` slice with a link to the mentioned user showing `@<current
+  username>` (so renames propagate). Non-mention text renders plain.
+- **Notification**: on post create, `NotifyMany` each mentioned user (except the author) with
+  kind `post.mention`.
+
+### 7d.3 Followers — browsable lists
+- The `GET /v1/users/{username}/followers` and `/following` endpoints already exist and are
+  visibility-gated. Add the missing UI on both clients: make the follower/following counts on a
+  profile tappable → a list screen of `UserBrief` rows (avatar, @username, display name) each
+  linking to the profile, with a follow/unfollow button where applicable. Add DB index
+  `follows(follower_id, status)` for the following direction.
+
+### 7d.4 Notifications tab + push
+- The in-app notifications tab exists; ensure it renders the new kinds below with clear copy and
+  a tap target (deep link) each.
+- **Push (new, build end-to-end)**:
+  - Backend `internal/push`: send Expo push via `https://exp.host/--/api/v2/push/send` (batch,
+    handle receipts/errors, prune invalid tokens `DeviceNotRegistered`). Wire it as a second leg
+    of `notify.Service.Notify`/`NotifyMany` (after the WS fanout): look up the target's
+    `push_tokens` and send. Add index `push_tokens(user_id)`. Title/body per kind.
+  - Mobile: add `expo-notifications`; register for push on login (`getExpoPushTokenAsync` →
+    `POST /v1/me/push-token`), unregister on logout (`DELETE`); handle taps → deep link to the
+    relevant screen; request permission with a friendly prompt.
+- **Notification kinds & triggers** (each fires WS + in-app row + push):
+  - `post.mention` — tagged in a post (7d.2).
+  - `dm.message` — incoming DM (exists; add push).
+  - `follow.new` — new follower (exists; add push). (`follow.request`/`follow.accepted` too.)
+  - `position.swing` — the recipient's OWN held position swings **>50%** in either direction.
+    Computed in the indexer on position update: compare new vs previous position magnitude
+    (size or unrealized value); if `|Δ| / prev > 0.50`, notify the holder.
+  - `following.large_entry` — someone you follow places an entry larger than **2× the average
+    entry size across everyone you follow**. See 7d.5 for the O(1)/O(log n) aggregation.
+
+### 7d.5 Performance: indexing & aggregation (O(1) / O(log n))
+Every notification-related lookup — and hot queries generally — must be O(1) (indexed
+point/counter lookup) or at worst O(log n) (btree range); no O(n) scans on the read path.
+- **Denormalize counters** onto `users`: `follower_count`, `following_count`, `post_count`
+  (replace the three per-read `COUNT(*)` subqueries in `GetProfileByUsername`). Maintain
+  incrementally on follow accept/unfollow and post create/delete (same transaction; guard against
+  negatives). Profile fetch becomes a single indexed row read.
+- **Running entry stats** for the large-entry trigger: `user_entry_stats(user_id primary key,
+  entry_count bigint, notional_sum numeric)` — O(1) upsert per entry; a user's average entry =
+  `notional_sum/entry_count`. Per-follower aggregate `follow_entry_agg(follower_id primary key,
+  following_notional_sum numeric, following_entry_count bigint)` maintained on follow/unfollow
+  (add/subtract the followee's current stats) and on a followee entry (increment the followee's
+  followers' aggs — a bounded async fan-out in a worker). The threshold check for a follower is
+  then O(1): `entrySize > 2 * (following_notional_sum/following_entry_count)`. Document the
+  fan-out bound; do it in the indexer/worker, not the request path.
+- **Indexes to add**: `follows(follower_id, status)`; `push_tokens(user_id)`;
+  `post_mentions(user_id)`; partial `notifications(user_id) where read_at is null` (fast unread
+  count/badge); `user_entry_stats(user_id)` (PK); `follow_entry_agg(follower_id)` (PK). Audit all
+  new queries have a supporting index.
+- New migration file(s) for all schema above; keep existing migrations untouched.
 
 ## 8. Security priorities
 

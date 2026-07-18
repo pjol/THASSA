@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useAuth, useAuthToken } from "@/providers/AuthProvider";
 import { useApi } from "@/lib/api";
+import { getWarpTargetId, setWarpTarget } from "@/lib/warp";
 import { socket } from "@/lib/ws";
 import type { Me } from "@/lib/types";
 
@@ -36,6 +37,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const res = await api.get<{ me: Me }>("/v1/me");
       setMe(res.me);
     } catch {
+      // A stale/invalid warp header can make /v1/me fail (real user isn't
+      // admin, or the target vanished → backend 403 per spec §7c.2). Drop the
+      // warp and retry as self so a bad warp can never lock out the session.
+      if (getWarpTargetId()) {
+        setWarpTarget(null);
+        try {
+          const res = await api.get<{ me: Me }>("/v1/me");
+          setMe(res.me);
+          return;
+        } catch {
+          /* fall through to unauthenticated */
+        }
+      }
       // unauthenticated / backend unavailable
       setMe(null);
     } finally {

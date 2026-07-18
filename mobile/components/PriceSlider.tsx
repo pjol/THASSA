@@ -22,6 +22,13 @@ export function PriceSlider({
   const valueRef = useRef(value);
   valueRef.current = value;
   const lastHaptic = useRef(value);
+  // The PanResponder below is created once and permanently captures the
+  // closures from the FIRST render. Route onChange through a ref that we keep
+  // pointed at the latest prop, so a drag always calls the CURRENT onChange —
+  // otherwise it would spread a stale parent value (e.g. reverting the chosen
+  // YES/NO side to its initial default whenever the slider moves).
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const clamp = (v: number) => Math.max(1, Math.min(99, Math.round(v)));
 
@@ -33,7 +40,7 @@ export function PriceSlider({
         lastHaptic.current = v;
         tap();
       }
-      onChange(v);
+      onChangeRef.current(v);
     }
   };
 

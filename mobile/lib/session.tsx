@@ -3,11 +3,13 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { AppState, AppStateStatus } from "react-native";
-import { useAuth } from "./auth";
+import { useAuth, useWallet } from "./auth";
 import { useApi } from "./api";
+import { setCachePinnedIdentity } from "./cache";
 import { startSocket, stopSocket, useUserChannel, WsEvent } from "./ws";
 import type { Me } from "./types";
 
@@ -74,13 +76,43 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [subscribers]
   );
 
+  // Tracks whether we have a loaded profile without retriggering load() on
+  // every me change (a state dep would re-run the auth effect below).
+  const hasMeRef = useRef(false);
+  useEffect(() => {
+    hasMeRef.current = me != null;
+  }, [me]);
+
+  // Embedded wallet address (null until Privy creates one), read through a
+  // ref so load() stays dependency-stable.
+  const { address: embeddedAddress } = useWallet();
+  const embeddedAddressRef = useRef<string | null>(embeddedAddress);
+  embeddedAddressRef.current = embeddedAddress;
+
   const load = useCallback(async () => {
-    setStatus((s) => (s === "ready" ? s : "loading"));
+    // Stay "ready" only for background refreshes when a profile is already
+    // loaded. With no profile yet (fresh sign-in), status must be "loading" —
+    // otherwise the entry gate reads ready+no-me as a connection error and
+    // flashes it for the whole duration of the first /v1/me fetch.
+    setStatus((s) => (s === "ready" && hasMeRef.current ? s : "loading"));
     try {
       // /v1/me is the critical call — failure here means we can't reach the
-      // backend (or auth is broken), so surface a connection error.
-      const meRes = await api.get<Me>("/v1/me");
-      setMeState(meRes);
+      // backend (or auth is broken), so surface a connection error. The backend
+      // wraps the profile as { me: {...} } (with is_admin/warp merged in).
+      const res = await api.get<{ me: Me }>("/v1/me");
+      setMeState(res.me);
+      // Privy access tokens don't always carry a wallet claim, so the backend
+      // may not know the embedded wallet yet — register it so orders/balance
+      // work (idempotent; the backend verifies ownership when configured).
+      if (!res.me.wallet_address && embeddedAddressRef.current) {
+        api
+          .post<{ me: Me }>("/v1/me/wallet", { address: embeddedAddressRef.current })
+          .then((r) => setMeState(r.me))
+          .catch(() => {});
+      }
+      // Prioritize this user's own profile/posts for cache retention (pinned
+      // tier) so /v1/users/{me}/... responses survive eviction longest.
+      setCachePinnedIdentity(res.me.username ?? null);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -92,6 +124,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!isSignedIn) {
       setStatus("ready");
       setMeState(null);
+      setCachePinnedIdentity(null);
       return;
     }
     load();

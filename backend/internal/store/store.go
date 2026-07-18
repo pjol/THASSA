@@ -5,6 +5,7 @@ package store
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -30,6 +31,13 @@ func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
 func (s *Store) url(key string) string {
 	if key == "" || s.urls == nil {
+		return key
+	}
+	// A stored key that is already a fully-qualified URL (dev/seed rows that
+	// point directly at real, publicly-hosted media) is served verbatim rather
+	// than prefixed with the object-store base — the resolver is otherwise a
+	// pure key→URL join, so an absolute URL must pass through untouched.
+	if strings.HasPrefix(key, "http://") || strings.HasPrefix(key, "https://") {
 		return key
 	}
 	return s.urls.PublicURL(key)

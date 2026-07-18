@@ -5,6 +5,7 @@ import {
   useEmbeddedEthereumWallet,
   type ConnectedEthereumWallet,
 } from "@privy-io/expo";
+import { runBeforeLogout } from "./push";
 
 // Thin auth abstraction over Privy (spec §6.1/§7): the rest of the app talks to
 // useAuth()/useWallet() only, so Privy can be swapped for Signet later by
@@ -47,6 +48,13 @@ function AuthBridge({ children }: { children: React.ReactNode }) {
     return acct?.address ?? null;
   }, [user]);
 
+  // Run pre-logout hooks (push-token cleanup) while the auth token is still
+  // valid, then clear the Privy session.
+  const wrappedLogout = useCallback(async () => {
+    await runBeforeLogout();
+    await logout();
+  }, [logout]);
+
   const value = useMemo<AuthState>(
     () => ({
       isReady,
@@ -55,9 +63,9 @@ function AuthBridge({ children }: { children: React.ReactNode }) {
       email,
       walletAddress: wallets[0]?.address ?? null,
       getAccessToken,
-      logout,
+      logout: wrappedLogout,
     }),
-    [isReady, user, email, wallets, getAccessToken, logout]
+    [isReady, user, email, wallets, getAccessToken, wrappedLogout]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

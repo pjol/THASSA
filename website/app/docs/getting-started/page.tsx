@@ -152,9 +152,11 @@ export default function GettingStarted() {
       </p>
       <ClientTabs tabs={authedExample} />
       <p>
-        The WebSocket accepts the same header on connect, or a{" "}
-        <code>?key=</code> query parameter where headers are unavailable — see{" "}
-        <Link href="/docs/api/websocket">WebSocket</Link>.
+        The WebSocket accepts the same header on connect, or (in browsers, which
+        can&rsquo;t set headers) the key via the{" "}
+        <code>Sec-WebSocket-Protocol</code> header — see{" "}
+        <Link href="/docs/api/websocket">WebSocket</Link>. Keys are never passed
+        as query parameters.
       </p>
 
       <h2 id="environments">Environments & base URLs</h2>

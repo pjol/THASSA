@@ -191,14 +191,20 @@ const RECEIVE_AUTH_TYPES = {
   ],
 } as const;
 
+// Wire shape of the backend's authPayload (spec §6.6): numeric token units,
+// the bytes32 nonce (the order digest for order placement), and the split
+// v/r/s signature. Field names must match exactly — the backend decoder
+// rejects unknown fields.
 export interface Auth3009Payload {
   from: string;
   to: string;
-  value: string; // token units, decimal string
+  value: number; // token units
   valid_after: number;
   valid_before: number;
-  auth_nonce: `0x${string}`;
-  signature: `0x${string}`;
+  nonce: `0x${string}`;
+  v: number;
+  r: `0x${string}`;
+  s: `0x${string}`;
 }
 
 export function randomBytes32(): `0x${string}` {
@@ -243,13 +249,20 @@ export async function signReceiveAuthorization(
     message,
   };
   const signature = await signTypedData(handle, typedData);
+  // Split the 65-byte signature into the backend's v/r/s wire fields.
+  const r = ("0x" + signature.slice(2, 66)) as `0x${string}`;
+  const s = ("0x" + signature.slice(66, 130)) as `0x${string}`;
+  let v = parseInt(signature.slice(130, 132), 16);
+  if (v < 27) v += 27;
   return {
     from: message.from,
     to: message.to,
-    value: message.value,
+    value: Number(message.value),
     valid_after: message.validAfter,
     valid_before: message.validBefore,
-    auth_nonce: authNonce,
-    signature,
+    nonce: authNonce,
+    v,
+    r,
+    s,
   };
 }

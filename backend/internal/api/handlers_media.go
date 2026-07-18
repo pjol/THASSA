@@ -11,13 +11,29 @@ import (
 	"github.com/pjol/THASSA/backend/internal/respond"
 )
 
-// Content-type + size validation on presign (spec §8).
-var allowedImageTypes = map[string]bool{
-	"image/jpeg": true, "image/png": true, "image/webp": true, "image/gif": true, "image/heic": true,
-}
-
-var allowedVideoTypes = map[string]bool{
-	"video/mp4": true, "video/quicktime": true, "video/webm": true,
+// Media kind is accepted for ANY image/* or video/* content type (all photo and
+// video formats). SVG is the one exclusion — it can carry active content and is
+// an XSS vector when served inline, and it isn't a real photo format anyway.
+//
+// mediaKind resolves the media kind from the content type (authoritative, robust
+// across clients that omit `kind`), falling back to the client-declared kind
+// when the content type is missing or generic (e.g. application/octet-stream).
+func mediaKind(contentType, declaredKind string) (kind string, ok bool) {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	switch {
+	case ct == "image/svg+xml":
+		return "", false
+	case strings.HasPrefix(ct, "image/"):
+		return "image", true
+	case strings.HasPrefix(ct, "video/"):
+		return "video", true
+	}
+	// No usable content type — trust the client's declared kind.
+	switch declaredKind {
+	case "image", "video":
+		return declaredKind, true
+	}
+	return "", false
 }
 
 const (
@@ -42,37 +58,43 @@ func (s *Server) handleCreateMedia(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	switch req.Kind {
+	kind, ok := mediaKind(req.ContentType, req.Kind)
+	if !ok {
+		respond.Error(w, http.StatusBadRequest, "unsupported media type — attach a photo or video")
+		return
+	}
+	// Size limits only (all photo/video formats accepted). SizeBytes is optional
+	// (some clients stream without a known length); enforce the cap when given.
+	switch kind {
 	case "image":
-		if !allowedImageTypes[req.ContentType] {
-			respond.Error(w, http.StatusBadRequest, "unsupported image content type")
-			return
-		}
-		if req.SizeBytes <= 0 || req.SizeBytes > maxImageBytes {
+		if req.SizeBytes > maxImageBytes {
 			respond.Error(w, http.StatusBadRequest, "image exceeds size limit")
 			return
 		}
 	case "video":
-		if !allowedVideoTypes[req.ContentType] {
-			respond.Error(w, http.StatusBadRequest, "unsupported video content type")
-			return
-		}
-		if req.SizeBytes <= 0 || req.SizeBytes > maxVideoBytes {
+		if req.SizeBytes > maxVideoBytes {
 			respond.Error(w, http.StatusBadRequest, "video exceeds size limit")
 			return
 		}
-	default:
-		respond.Error(w, http.StatusBadRequest, "kind must be image or video")
-		return
 	}
 
+	// Presign with a concrete content type so the storage PUT and later
+	// transcoding know the format; default per kind when the client omitted it.
+	contentType := strings.TrimSpace(req.ContentType)
+	if contentType == "" {
+		if kind == "video" {
+			contentType = "video/mp4"
+		} else {
+			contentType = "image/jpeg"
+		}
+	}
 	key := uploadKey("media", id.UserID, req.Filename)
-	uploadURL, publicURL, err := s.assets.PresignUpload(r.Context(), key, req.ContentType)
+	uploadURL, publicURL, err := s.assets.PresignUpload(r.Context(), key, contentType)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to presign upload")
 		return
 	}
-	mediaID, err := s.db.CreateMedia(r.Context(), id.UserID, req.Kind, key)
+	mediaID, err := s.db.CreateMedia(r.Context(), id.UserID, kind, key)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to create media")
 		return
@@ -80,7 +102,7 @@ func (s *Server) handleCreateMedia(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusCreated, map[string]any{
 		"media": map[string]any{
 			"id":         mediaID,
-			"kind":       req.Kind,
+			"kind":       kind,
 			"upload_url": uploadURL,
 			"public_url": publicURL,
 			"status":     "uploading",

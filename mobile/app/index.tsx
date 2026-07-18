@@ -19,7 +19,10 @@ export default function Index() {
 
   // Signed in: wait for the backend, surface connection errors explicitly.
   if (status === "loading") return <Splash />;
-  if (status === "error" || !me) return <ConnectionError onRetry={refresh} />;
+  if (status === "error") return <ConnectionError onRetry={refresh} />;
+  // Ready with no profile yet = a transient state right after sign-in while
+  // the first /v1/me is in flight — keep showing the splash, not an error.
+  if (!me) return <Splash />;
 
   // New user must pick a username / finish the profile first.
   if (needsOnboarding(me)) return <Redirect href="/onboarding" />;

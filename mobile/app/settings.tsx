@@ -13,8 +13,21 @@ import type { Me, TradesVisibility } from "../lib/types";
 
 // Settings (spec §7): theme (system/light/dark), privacy — private account
 // (follow requests) and trades visibility (hides the Trades tab + position
-// badges for everyone but you) — and log out. Privacy persists via
-// PATCH /v1/me/settings and is enforced server-side.
+// badges for everyone but you) — per-category notification toggles, and log
+// out. Privacy + notification prefs persist via PATCH /v1/me/settings and are
+// enforced server-side (a toggled-off category is never stored or pushed).
+
+// The user-facing notification categories (keys match the backend's
+// notify.Categories; a missing key means enabled).
+const NOTIFICATION_CATEGORIES: { key: string; title: string; subtitle: string }[] = [
+  { key: "likes", title: "Likes", subtitle: "When someone likes your post." },
+  { key: "comments", title: "Comments", subtitle: "When someone comments on your post." },
+  { key: "mentions", title: "Mentions", subtitle: "When someone @mentions you." },
+  { key: "follows", title: "Followers", subtitle: "New followers, follow requests, and accepts." },
+  { key: "messages", title: "Messages", subtitle: "New direct messages." },
+  { key: "markets", title: "Market activity", subtitle: "Your markets and orders: opened, matched, filled, settled." },
+  { key: "trading", title: "Trading alerts", subtitle: "Big swings in your positions and large entries by people you follow." },
+];
 
 export default function Settings() {
   const t = useTheme();
@@ -27,10 +40,22 @@ export default function Settings() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const patchSettings = async (
-    patch: Partial<{ is_private: boolean; trades_visibility: TradesVisibility }>,
+    patch: Partial<{
+      is_private: boolean;
+      trades_visibility: TradesVisibility;
+      notification_prefs: Record<string, boolean>;
+    }>,
     revert: (m: Me) => Me
   ) => {
-    setMe((m) => ({ ...m, ...patch }));
+    // notification_prefs is a partial merge on both sides: the backend ORs the
+    // sent keys over the stored map, and we mirror that optimistically.
+    setMe((m) => ({
+      ...m,
+      ...patch,
+      ...(patch.notification_prefs
+        ? { notification_prefs: { ...m.notification_prefs, ...patch.notification_prefs } }
+        : {}),
+    }));
     try {
       await api.patch("/v1/me/settings", patch);
     } catch (e) {
@@ -42,6 +67,7 @@ export default function Settings() {
 
   const isPrivate = !!me?.is_private;
   const tradesPrivate = me?.trades_visibility === "private";
+  const notifOn = (key: string) => me?.notification_prefs?.[key] !== false;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: t.bg }} contentContainerStyle={{ padding: space.lg, gap: space.xl }}>
@@ -105,6 +131,56 @@ export default function Settings() {
         />
       </Section>
 
+      {/* Notifications: one toggle per category. */}
+      <Section title="Notifications">
+        {NOTIFICATION_CATEGORIES.map((c) => (
+          <ToggleRow
+            key={c.key}
+            title={c.title}
+            subtitle={c.subtitle}
+            value={notifOn(c.key)}
+            onChange={(v) =>
+              patchSettings({ notification_prefs: { [c.key]: v } }, (m) => ({
+                ...m,
+                notification_prefs: { ...m.notification_prefs, [c.key]: !v },
+              }))
+            }
+          />
+        ))}
+      </Section>
+
+      {/* Admin (spec §7c.3) — only for real admins, hidden while warped. */}
+      {me?.is_admin && !me?.warp?.active ? (
+        <Section title="Admin">
+          <Pressable
+            onPress={() => {
+              tap();
+              router.push("/admin");
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingVertical: 14,
+              paddingHorizontal: 14,
+              borderRadius: radius.lg,
+              borderWidth: 1,
+              borderColor: t.border,
+              backgroundColor: t.surface,
+            }}
+          >
+            <Ionicons name="swap-horizontal" size={20} color={t.amber} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: t.text, fontWeight: "700", fontSize: 15 }}>Warp into a user</Text>
+              <Text style={{ color: t.textDim, fontSize: 12.5, marginTop: 2 }}>
+                Search a user and view the app as them (read-only).
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={t.textFaint} />
+          </Pressable>
+        </Section>
+      ) : null}
+
       {/* Account */}
       <Section title="Account">
         <Button
@@ -156,13 +232,17 @@ function ToggleRow({
         <Text style={{ color: t.text, fontWeight: "700", fontSize: 15 }}>{title}</Text>
         <Text style={{ color: t.textDim, fontSize: 12.5, lineHeight: 17, marginTop: 2 }}>{subtitle}</Text>
       </View>
+      {/* Fully themed (whitelabel rule): brand-blue track when on, themed
+          gray track when off — never the OS-default green/gray. */}
       <Switch
         value={value}
         onValueChange={(v) => {
           tap();
           onChange(v);
         }}
-        trackColor={{ true: t.blue }}
+        trackColor={{ true: t.blue, false: t.grayTint }}
+        thumbColor="#FFFFFF"
+        ios_backgroundColor={t.grayTint}
       />
     </View>
   );

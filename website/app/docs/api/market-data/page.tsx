@@ -130,8 +130,8 @@ export default function MarketData() {
         Five read-only endpoints, <strong>no auth required</strong>,
         rate-limited by IP. Money fields are strings in payment-token base
         units (6 decimals in the examples); prices are integer cents; states
-        are the <Link href="/docs/protocol/markets">one-word
-        vocabulary</Link>, verbatim.
+        use the values documented in{" "}
+        <Link href="/docs/protocol/markets">Markets &amp; order book</Link>.
       </p>
 
       <h2 id="list-markets">List &amp; search markets</h2>

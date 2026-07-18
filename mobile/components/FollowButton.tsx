@@ -1,13 +1,31 @@
 import { useState } from "react";
 import { useApi } from "../lib/api";
 import { tap } from "../lib/haptics";
-import type { UserProfile } from "../lib/types";
 import { Button } from "./ui";
+
+// The minimal shape the follow button needs. UserProfile satisfies it, so
+// existing callers are unchanged; follower/following list rows (UserBrief plus
+// optional relationship fields) also fit.
+export interface FollowTarget {
+  id: string;
+  is_private?: boolean;
+  is_following?: boolean;
+  follow_requested?: boolean;
+}
 
 // Optimistic follow button. Private accounts get an IG-style "Requested"
 // pending state until the owner approves (spec §7 privacy settings).
 
-export function FollowButton({ user, onChange }: { user: UserProfile; onChange?: () => void }) {
+export function FollowButton({
+  user,
+  onChange,
+  wide,
+}: {
+  user: FollowTarget;
+  onChange?: () => void;
+  // Profile-page variant: fills the available row width and stands taller.
+  wide?: boolean;
+}) {
   const api = useApi();
   const [following, setFollowing] = useState(!!user.is_following);
   const [requested, setRequested] = useState(!!user.follow_requested);
@@ -43,5 +61,15 @@ export function FollowButton({ user, onChange }: { user: UserProfile; onChange?:
     }
   };
 
+  if (wide) {
+    return (
+      <Button
+        title={label}
+        variant={variant}
+        onPress={toggle}
+        style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 22 }}
+      />
+    );
+  }
   return <Button title={label} variant={variant} small onPress={toggle} style={{ paddingHorizontal: 22 }} />;
 }

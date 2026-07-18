@@ -80,8 +80,11 @@ export function TradeSheet({
     setStage("SIGNING");
     try {
       const wallet = await ensureWallet();
+      // Access tokens don't always carry a wallet claim — make sure the
+      // backend has this wallet linked before it validates the order.
+      await api.post("/v1/me/wallet", { address: wallet.address }).catch(() => {});
       // Next EIP-712 maker nonce comes from the wallet endpoint (web parity).
-      const { order_nonce } = await api.get<{ order_nonce: number }>("/v1/wallet");
+      const { wallet: { order_nonce } } = await api.get<{ wallet: { order_nonce: number } }>("/v1/wallet");
       const maxCost = maxCostUnits(shares, price);
       // Single-signature carriage: the order is NOT signed separately — its
       // EIP-712 digest rides as the EIP-3009 auth nonce, so the one funding
@@ -97,18 +100,19 @@ export function TradeSheet({
       });
       const auth = await signReceiveAuthorization(wallet, { value: maxCost, nonce: order.digest });
       setStage("QUEUED");
+      // Flat wire shape (backend orderPayload — unknown fields are rejected):
+      // numeric max_cost/nonce, no maker (derived server-side from the auth).
       const res = await api.post<{ order: Order }>("/v1/orders", {
         market_id: market.id,
         side,
         price_cents: price,
         shares,
-        max_cost: order.message.maxCost,
+        max_cost: Number(maxCost),
         expiry: order.message.expiry,
-        nonce: order.message.nonce,
-        maker: wallet.address,
+        nonce: order_nonce,
         auth,
         affiliate_post_id: affiliatePostId ?? null,
-        affiliate_id: affiliateId ?? 0,
+        affiliate_id: affiliateId != null ? String(affiliateId) : null,
       });
       success();
       toasts.show({
@@ -218,17 +222,17 @@ export function TradeSheet({
 
         {error ? <Text style={{ color: t.danger, fontSize: 13 }}>{error}</Text> : null}
 
-        {stage === "SIGNING" || stage === "QUEUED" ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, justifyContent: "center", paddingVertical: 6 }}>
-            <StateChip state={stage} />
-            <Text style={{ color: t.textDim, fontSize: 13 }}>
-              {stage === "SIGNING" ? "Confirm in your wallet…" : "Submitting to the relayer…"}
-            </Text>
-          </View>
-        ) : null}
-
+        {/* Loading state lives IN the button (same as feed market cards). */}
         <Button
-          title={shares > 0 ? `Buy ${side.toUpperCase()} · ${dollars(pay)}` : "Buy"}
+          title={
+            stage === "SIGNING"
+              ? "Confirm in your wallet…"
+              : stage === "QUEUED"
+                ? "Submitting…"
+                : shares > 0
+                  ? `Buy ${side.toUpperCase()} · ${dollars(pay)}`
+                  : "Buy"
+          }
           variant={side}
           disabled={!canSubmit}
           loading={stage === "SIGNING" || stage === "QUEUED"}

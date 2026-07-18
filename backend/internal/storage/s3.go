@@ -92,3 +92,13 @@ func (s *S3Store) Put(ctx context.Context, key, contentType string, body io.Read
 	})
 	return err
 }
+
+// Delete removes an object. S3 DeleteObject is idempotent (deleting a missing
+// key succeeds), so re-running the drop-original step is safe.
+func (s *S3Store) Delete(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	return err
+}

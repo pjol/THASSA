@@ -3,19 +3,103 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"unicode/utf16"
 
 	"github.com/google/uuid"
 
 	"github.com/pjol/THASSA/backend/internal/auth"
 	"github.com/pjol/THASSA/backend/internal/notify"
 	"github.com/pjol/THASSA/backend/internal/respond"
+	"github.com/pjol/THASSA/backend/internal/structs"
 )
 
+// mentionInput is the write-side @-mention wire shape (spec §7d.2):
+// [{user_id, start, len}] where start/len are UTF-16 code-unit offsets into the
+// caption (matching JavaScript string indexing on web + mobile).
+type mentionInput struct {
+	UserID string `json:"user_id"`
+	Start  int    `json:"start"`
+	Len    int    `json:"len"`
+}
+
 type createPostRequest struct {
-	Caption  *string  `json:"caption"`
-	Kind     string   `json:"kind"` // photo | video | reel
-	MediaIDs []string `json:"media_ids"`
-	MarketID *string  `json:"market_id"` // optional attach-market
+	Caption  *string        `json:"caption"`
+	Kind     string         `json:"kind"` // photo | video | reel
+	MediaIDs []string       `json:"media_ids"`
+	MarketID *string        `json:"market_id"` // optional attach-market
+	Mentions []mentionInput `json:"mentions"`  // optional @-mentions
+}
+
+// captionUTF16Len measures the caption in UTF-16 code units — the unit web +
+// mobile use for mention start/len offsets (JS string indices). Measuring in
+// bytes or runes would misvalidate captions containing emoji/astral characters.
+func captionUTF16Len(caption *string) int {
+	if caption == nil {
+		return 0
+	}
+	return len(utf16.Encode([]rune(*caption)))
+}
+
+// parseMentions validates and normalizes the @-mention payload against the
+// caption bounds (UTF-16 offsets). The backend never slices the caption by
+// these offsets — the client does that at render time — so this only checks
+// that each [start, start+len) window fits within the caption and that ids
+// parse. Existence of the referenced users is checked separately.
+func parseMentions(caption *string, raw []mentionInput) ([]structs.MentionInput, bool) {
+	if len(raw) == 0 {
+		return nil, true
+	}
+	if len(raw) > 50 {
+		return nil, false
+	}
+	limit := captionUTF16Len(caption)
+	out := make([]structs.MentionInput, 0, len(raw))
+	for _, m := range raw {
+		uid, err := uuid.Parse(m.UserID)
+		if err != nil || uid == uuid.Nil {
+			return nil, false
+		}
+		if m.Start < 0 || m.Len <= 0 || m.Start+m.Len > limit {
+			return nil, false
+		}
+		out = append(out, structs.MentionInput{UserID: uid, Start: m.Start, Len: m.Len})
+	}
+	return out, true
+}
+
+// validateMentions parses the @-mention payload against the given text (UTF-16
+// bounds) and verifies every referenced user exists. On any problem it writes
+// the appropriate 4xx/5xx and returns ok=false. Shared by the post + comment
+// create paths (spec §7d.2).
+func (s *Server) validateMentions(w http.ResponseWriter, r *http.Request, text *string, raw []mentionInput) ([]structs.MentionInput, bool) {
+	mentions, ok := parseMentions(text, raw)
+	if !ok {
+		respond.Error(w, http.StatusBadRequest, "invalid mentions")
+		return nil, false
+	}
+	if len(mentions) == 0 {
+		return mentions, true
+	}
+	ids := make([]uuid.UUID, len(mentions))
+	for i, m := range mentions {
+		ids[i] = m.UserID
+	}
+	existing, err := s.db.FilterExistingUsers(r.Context(), ids)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to validate mentions")
+		return nil, false
+	}
+	exists := make(map[uuid.UUID]bool, len(existing))
+	for _, e := range existing {
+		exists[e] = true
+	}
+	for _, m := range mentions {
+		if !exists[m.UserID] {
+			respond.Error(w, http.StatusBadRequest, "mentioned user not found")
+			return nil, false
+		}
+	}
+	return mentions, true
 }
 
 // handleCreatePost publishes a post from previously-uploaded media, optionally
@@ -66,7 +150,14 @@ func (s *Server) handleCreatePost(w http.ResponseWriter, r *http.Request) {
 		marketID = &mid
 	}
 
-	postID, _, err := s.db.CreatePost(r.Context(), id.UserID, req.Caption, req.Kind, marketID, mediaIDs)
+	// @-mentions (spec §7d.2): validate offsets (UTF-16 bounds) then verify each
+	// referenced user exists before storing.
+	mentions, ok := s.validateMentions(w, r, req.Caption, req.Mentions)
+	if !ok {
+		return
+	}
+
+	postID, _, mentionedIDs, err := s.db.CreatePost(r.Context(), id.UserID, req.Caption, req.Kind, marketID, mediaIDs, mentions)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "failed to create post")
 		return
@@ -75,6 +166,22 @@ func (s *Server) handleCreatePost(w http.ResponseWriter, r *http.Request) {
 	if err != nil || post == nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to load post")
 		return
+	}
+	// Notify each mentioned user (except the author) — post.mention (spec §7d.2).
+	if len(mentionedIDs) > 0 {
+		targets := make([]uuid.UUID, 0, len(mentionedIDs))
+		for _, mid := range mentionedIDs {
+			if mid != id.UserID {
+				targets = append(targets, mid)
+			}
+		}
+		if len(targets) > 0 {
+			payload := map[string]any{"post_id": postID, "author_id": id.UserID}
+			if post.Author.Username != nil {
+				payload["author_username"] = *post.Author.Username
+			}
+			s.notifyMany(r, targets, notify.KindPostMention, payload)
+		}
 	}
 	respond.JSON(w, http.StatusCreated, map[string]any{"post": post})
 }
@@ -266,8 +373,9 @@ func (s *Server) handleUnreact(w http.ResponseWriter, r *http.Request) {
 // --- comments ---------------------------------------------------------------
 
 type createCommentRequest struct {
-	Body     string  `json:"body"`
-	ParentID *string `json:"parent_id"`
+	Body     string         `json:"body"`
+	ParentID *string        `json:"parent_id"`
+	Mentions []mentionInput `json:"mentions"` // optional @-mentions (§7d.2)
 }
 
 // handlePostComments lists a post's comments (post must be visible).
@@ -317,7 +425,10 @@ func (s *Server) handleCreatePostComment(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// createComment is shared between post + market comment endpoints.
+// createComment is shared between post + market comment endpoints. It validates
+// and stores @-mentions (spec §7d.2) against the comment BODY (UTF-16 offsets)
+// and notifies mentioned users (except the author) with post.mention, tagging
+// the payload with the comment + its post/market so clients can deep-link.
 func (s *Server) createComment(w http.ResponseWriter, r *http.Request, userID uuid.UUID, postID, marketID *uuid.UUID) (uuid.UUID, bool) {
 	var req createCommentRequest
 	if err := respond.Decode(r, &req); err != nil || req.Body == "" || len(req.Body) > 2200 {
@@ -333,12 +444,39 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request, userID uu
 		}
 		parentID = &pid
 	}
-	comment, err := s.db.CreateComment(r.Context(), userID, postID, marketID, parentID, req.Body)
+	mentions, ok := s.validateMentions(w, r, &req.Body, req.Mentions)
+	if !ok {
+		return uuid.Nil, false
+	}
+	comment, mentionedIDs, err := s.db.CreateComment(r.Context(), userID, postID, marketID, parentID, req.Body, mentions)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to create comment")
 		return uuid.Nil, false
 	}
 	respond.JSON(w, http.StatusCreated, map[string]any{"comment": comment})
+
+	// Notify each mentioned user (except the author) — post.mention on a comment.
+	if len(mentionedIDs) > 0 {
+		targets := make([]uuid.UUID, 0, len(mentionedIDs))
+		for _, mid := range mentionedIDs {
+			if mid != userID {
+				targets = append(targets, mid)
+			}
+		}
+		if len(targets) > 0 {
+			payload := map[string]any{"comment_id": comment.ID, "author_id": userID}
+			if postID != nil {
+				payload["post_id"] = *postID
+			}
+			if marketID != nil {
+				payload["market_id"] = *marketID
+			}
+			if comment.Author.Username != nil {
+				payload["author_username"] = *comment.Author.Username
+			}
+			s.notifyMany(r, targets, notify.KindPostMention, payload)
+		}
+	}
 	return comment.ID, true
 }
 
@@ -419,12 +557,30 @@ func (s *Server) handleViewStory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleExploreMarkets(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(r, 20)
 	offset := 0
-	if v := r.URL.Query().Get("offset"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 10000 {
-			offset = n
+	// The next_cursor this handler returns is an offset; accept it under
+	// either name (clients echo it back as ?cursor=).
+	for _, key := range []string{"offset", "cursor"} {
+		if v := r.URL.Query().Get(key); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 10000 {
+				offset = n
+			}
 		}
 	}
-	markets, err := s.db.ExploreMarkets(r.Context(), limit, offset)
+	status := r.URL.Query().Get("status")
+	switch status {
+	case "", "active", "settling", "settled", "all":
+	default:
+		respond.Error(w, http.StatusBadRequest, "status must be active, settling, settled, or all")
+		return
+	}
+	sort := r.URL.Query().Get("sort")
+	switch sort {
+	case "", "trending", "newest", "volume":
+	default:
+		respond.Error(w, http.StatusBadRequest, "sort must be trending, newest, or volume")
+		return
+	}
+	markets, err := s.db.ExploreMarkets(r.Context(), limit, offset, status, sort)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "failed to load markets")
 		return

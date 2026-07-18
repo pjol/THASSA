@@ -32,6 +32,17 @@ type Config struct {
 	// from the Privy dashboard). Set ⇒ tokens verify fully locally with no
 	// network callout; unset ⇒ JWKS fallback (dev convenience).
 	PrivyVerificationKey string
+	// PrivyAppSecret enables the Privy server API (auth.privy.io) so a user's
+	// verified email can be resolved by DID when it is not in the access token.
+	// This is the concrete production use for the app secret (spec §7c.1).
+	// Empty ⇒ email is taken from the token claim only.
+	PrivyAppSecret string
+
+	// Admin & warp (spec §7c). AdminEmails is the lowercased set of admin
+	// email addresses. is_admin = email_verified (or AdminTrustUnverifiedEmail)
+	// AND lower(email) ∈ AdminEmails.
+	AdminEmails               map[string]bool
+	AdminTrustUnverifiedEmail bool
 
 	// S3 / MinIO object storage.
 	S3Endpoint       string
@@ -97,6 +108,10 @@ func Load() *Config {
 
 		PrivyAppID:           must("PRIVY_APP_ID"),
 		PrivyVerificationKey: os.Getenv("PRIVY_VERIFICATION_KEY"),
+		PrivyAppSecret:       os.Getenv("PRIVY_APP_SECRET"),
+
+		AdminEmails:               lowerSet(splitList(os.Getenv("ADMIN_EMAILS"))),
+		AdminTrustUnverifiedEmail: get("ADMIN_TRUST_UNVERIFIED_EMAIL", "false") == "true",
 
 		S3Endpoint:       os.Getenv("S3_ENDPOINT"),
 		S3Region:         get("S3_REGION", "us-east-1"),
@@ -172,6 +187,32 @@ func getInt64(k string, def int64) int64 {
 		}
 	}
 	return def
+}
+
+// EmailIsAdmin reports whether the given email grants admin. The email must be
+// verified (spec §7c: a spoofed client email can never grant admin) unless the
+// dev escape hatch AdminTrustUnverifiedEmail is set. Matching is
+// case-insensitive against ADMIN_EMAILS.
+func (c *Config) EmailIsAdmin(email string, verified bool) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return false
+	}
+	if !verified && !c.AdminTrustUnverifiedEmail {
+		return false
+	}
+	return c.AdminEmails[email]
+}
+
+// lowerSet builds a lowercased membership set from a list.
+func lowerSet(items []string) map[string]bool {
+	m := make(map[string]bool, len(items))
+	for _, it := range items {
+		if it = strings.ToLower(strings.TrimSpace(it)); it != "" {
+			m[it] = true
+		}
+	}
+	return m
 }
 
 func splitList(s string) []string {

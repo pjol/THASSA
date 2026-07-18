@@ -75,6 +75,33 @@ func (s *SettlementRunner) tick(ctx context.Context) {
 			_ = s.db.ReleaseSettlementClaim(ctx, p.MarketID)
 		}
 	}
+	s.expireDue(ctx)
+}
+
+// expireDue auto-resolves past-due, unsettled markets 50/50 (spec: markets
+// carry an expiration date; reaching it before settlement splits every
+// matched share 50¢/50¢). The DB is the read-model source of truth; the
+// on-chain expireMarket path mirrors it for live markets via the contract's
+// expiry mappings.
+func (s *SettlementRunner) expireDue(ctx context.Context) {
+	expired, err := s.db.ExpireDueMarkets(ctx)
+	if err != nil {
+		log.Printf("settlement: expire sweep: %v", err)
+		return
+	}
+	for _, m := range expired {
+		log.Printf("settlement: market %s (%q) expired — resolved 50/50", m.ID, m.Title)
+		// Realtime: flip open cards to SETTLED 50/50.
+		s.fanout.Publish("book:"+m.ID.String(), "market.update", map[string]any{
+			"status": "SETTLED", "direction": nil, "resolved_fifty": true,
+		})
+		// Creator notification (in-app; same kind the settle path uses).
+		if n, err := s.db.InsertNotification(ctx, m.CreatorID, "market.settled", map[string]any{
+			"market_id": m.ID.String(), "title": m.Title, "fifty_fifty": true,
+		}); err == nil {
+			s.fanout.SendToUser(m.CreatorID, "market.settled", n)
+		}
+	}
 }
 
 func (s *SettlementRunner) settle(ctx context.Context, p store.PendingSettlement) error {

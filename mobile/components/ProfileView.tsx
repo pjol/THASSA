@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useApi } from "../lib/api";
+import { bestImageUrl } from "../lib/media";
 import { compact, displayName } from "../lib/format";
 import { space, useTheme } from "../lib/theme";
 import { nextCursorOf, pageItems, type Conversation, type Paged, type Post, type UserProfile } from "../lib/types";
@@ -49,16 +50,33 @@ export function ProfileView({
           <Avatar url={profile.avatar_url} size={84} />
           <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-around" }}>
             <Stat label="Posts" value={profile.post_count} />
-            <Stat label="Followers" value={profile.follower_count} />
-            <Stat label="Following" value={profile.following_count} />
+            <Stat
+              label="Followers"
+              value={profile.follower_count}
+              onPress={() => router.push(`/user/${profile.username}/connections?tab=followers` as never)}
+            />
+            <Stat
+              label="Following"
+              value={profile.following_count}
+              onPress={() => router.push(`/user/${profile.username}/connections?tab=following` as never)}
+            />
           </View>
         </View>
         <View style={{ gap: 3 }}>
+          {/* Display name shown ONLY when the user set one; the username line is
+              always present. No generic "user" placeholder. */}
+          {profile.display_name?.trim() ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ color: t.text, fontWeight: "800", fontSize: 16 }}>{profile.display_name.trim()}</Text>
+              {profile.is_private ? <Ionicons name="lock-closed" size={13} color={t.textDim} /> : null}
+            </View>
+          ) : null}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={{ color: t.text, fontWeight: "800", fontSize: 16 }}>{displayName(profile)}</Text>
-            {profile.is_private ? <Ionicons name="lock-closed" size={13} color={t.textDim} /> : null}
+            <Text style={{ color: profile.display_name?.trim() ? t.textDim : t.text, fontWeight: profile.display_name?.trim() ? "400" : "800", fontSize: profile.display_name?.trim() ? 13.5 : 16 }}>
+              @{profile.username}
+            </Text>
+            {!profile.display_name?.trim() && profile.is_private ? <Ionicons name="lock-closed" size={13} color={t.textDim} /> : null}
           </View>
-          <Text style={{ color: t.textDim, fontSize: 13.5 }}>@{profile.username}</Text>
           {profile.bio ? <Text style={{ color: t.text, fontSize: 14, lineHeight: 19, marginTop: 3 }}>{profile.bio}</Text> : null}
           {(profile.links ?? []).map((l) => (
             <Pressable key={l} onPress={() => Linking.openURL(l.startsWith("http") ? l : `https://${l}`).catch(() => {})}>
@@ -84,7 +102,7 @@ export function ProfileView({
             </>
           ) : (
             <>
-              <FollowButton user={profile} onChange={onRefetch} />
+              <FollowButton user={profile} onChange={onRefetch} wide />
               <MessageButton userId={profile.id} />
             </>
           )}
@@ -167,13 +185,13 @@ function MessageButton({ userId }: { userId: string }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, onPress }: { label: string; value: number; onPress?: () => void }) {
   const t = useTheme();
   return (
-    <View style={{ alignItems: "center" }}>
+    <Pressable onPress={onPress} disabled={!onPress} style={{ alignItems: "center" }} hitSlop={8}>
       <Text style={{ color: t.text, fontWeight: "800", fontSize: 17 }}>{compact(value)}</Text>
       <Text style={{ color: t.textDim, fontSize: 12.5 }}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -227,7 +245,7 @@ function PostGrid({ username, kind }: { username: string; kind: "posts" | "reels
       renderItem={({ item }) => (
         <Pressable onPress={() => router.push(`/post/${item.id}` as never)} style={{ width: cell, height: cell, padding: 1 }}>
           <Image
-            source={{ uri: item.media[0]?.url }}
+            source={{ uri: bestImageUrl(item.media[0], cell) }}
             style={{ flex: 1, backgroundColor: t.surfaceAlt }}
             contentFit="cover"
           />

@@ -9,10 +9,10 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "../lib/api";
+import { bestImageUrl } from "../lib/media";
 import { useSession } from "../lib/session";
 import { space, useTheme } from "../lib/theme";
 import { pageItems, type Paged, type StoryGroup } from "../lib/types";
@@ -34,9 +34,7 @@ export function StoriesRail() {
   const api = useApi();
   const t = useTheme();
   const router = useRouter();
-  const qc = useQueryClient();
   const { me } = useSession();
-  const [posting, setPosting] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["stories"],
     queryFn: () => api.get<Paged<StoryGroup>>("/v1/stories"),
@@ -45,31 +43,18 @@ export function StoriesRail() {
 
   const groups = pageItems<StoryGroup>(data);
 
-  // "Your story": pick a photo/video and post it (expires in 24h server-side).
-  const addStory = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images", "videos"], quality: 0.85 });
-    if (res.canceled || !res.assets[0]) return;
-    const a = res.assets[0];
-    setPosting(true);
-    try {
-      const up = await api.uploadMedia(a.uri, a.mimeType ?? (a.type === "video" ? "video/mp4" : "image/jpeg"));
-      await api.post("/v1/stories", { media_id: up.id });
-      qc.invalidateQueries({ queryKey: ["stories"] });
-    } catch {
-      /* toastless: rail refresh will reconcile */
-    } finally {
-      setPosting(false);
-    }
-  };
+  // "Your story": open the full-screen in-app camera (Instagram-story style).
+  // Stories are camera-only — the camera screen handles capture and upload
+  // (media-id flow) and invalidates ["stories"] on send.
+  const addStory = () => router.push("/story-camera" as never);
 
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingHorizontal: space.md, paddingVertical: 10, gap: 14 }}
-      style={{ borderBottomWidth: 1, borderBottomColor: t.border }}
     >
-      <Pressable onPress={addStory} disabled={posting} style={{ alignItems: "center", gap: 4, width: 68, opacity: posting ? 0.5 : 1 }}>
+      <Pressable onPress={addStory} style={{ alignItems: "center", gap: 4, width: 68 }}>
         <View>
           <Avatar url={me?.avatar_url} size={58} />
           <View
@@ -200,7 +185,7 @@ export function StoryViewerScreen() {
         />
       ) : (
         <Image
-          source={{ uri: story.media.url }}
+          source={{ uri: bestImageUrl(story.media, width) }}
           style={{ width, height, position: "absolute" }}
           contentFit="contain"
         />

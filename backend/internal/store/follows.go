@@ -6,31 +6,121 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/pjol/THASSA/backend/internal/structs"
 )
 
 // Follow creates a follow edge. Following a private account creates a
 // 'pending' follow request instead; the followee approves or denies it.
-// Returns the resulting status ("pending" or "accepted").
+// Returns the resulting status ("pending" or "accepted"). A newly-created
+// accepted edge maintains the denormalized counters + the large-entry
+// aggregate in the same transaction (spec §7d.5).
 func (s *Store) Follow(ctx context.Context, followerID, followeeID uuid.UUID) (string, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
 	var status string
-	err := s.pool.QueryRow(ctx, `
+	var inserted bool
+	err = tx.QueryRow(ctx, `
 		INSERT INTO follows (follower_id, followee_id, status)
 		SELECT $1, $2, CASE WHEN u.is_private THEN 'pending' ELSE 'accepted' END
 		FROM users u WHERE u.id=$2
 		ON CONFLICT (follower_id, followee_id) DO UPDATE SET follower_id=EXCLUDED.follower_id
-		RETURNING status`, followerID, followeeID).Scan(&status)
+		RETURNING status, (xmax = 0)`, followerID, followeeID).Scan(&status, &inserted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("user not found")
 	}
-	return status, err
+	if err != nil {
+		return "", err
+	}
+	if inserted && status == "accepted" {
+		if err := applyAcceptedFollow(ctx, tx, followerID, followeeID); err != nil {
+			return "", err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return status, nil
 }
 
-// Unfollow removes a follow (or cancels a pending request).
+// Unfollow removes a follow (or cancels a pending request). When an *accepted*
+// edge is removed the counters + large-entry aggregate are decremented in the
+// same transaction (guarded ≥ 0).
 func (s *Store) Unfollow(ctx context.Context, followerID, followeeID uuid.UUID) error {
-	_, err := s.pool.Exec(ctx,
-		`DELETE FROM follows WHERE follower_id=$1 AND followee_id=$2`, followerID, followeeID)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	err = tx.QueryRow(ctx,
+		`DELETE FROM follows WHERE follower_id=$1 AND followee_id=$2 RETURNING status`,
+		followerID, followeeID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return tx.Commit(ctx) // nothing to remove
+	}
+	if err != nil {
+		return err
+	}
+	if status == "accepted" {
+		if err := removeAcceptedFollow(ctx, tx, followerID, followeeID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// txExec is the subset of pgx used by the follow-counter helpers (satisfied by
+// both *pgxpool.Pool and pgx.Tx).
+type txExec interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// applyAcceptedFollow bumps follower/following counters and folds the followee's
+// current entry stats into the follower's large-entry aggregate.
+func applyAcceptedFollow(ctx context.Context, tx txExec, followerID, followeeID uuid.UUID) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET follower_count = follower_count + 1 WHERE id=$1`, followeeID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET following_count = following_count + 1 WHERE id=$1`, followerID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO follow_entry_agg (follower_id, following_notional_sum, following_entry_count)
+		SELECT $1::uuid, COALESCE(ues.notional_sum, 0), COALESCE(ues.entry_count, 0)
+		FROM (SELECT $2::uuid AS uid) f
+		LEFT JOIN user_entry_stats ues ON ues.user_id = f.uid
+		ON CONFLICT (follower_id) DO UPDATE SET
+			following_notional_sum = follow_entry_agg.following_notional_sum + EXCLUDED.following_notional_sum,
+			following_entry_count  = follow_entry_agg.following_entry_count  + EXCLUDED.following_entry_count,
+			updated_at = now()`, followerID, followeeID)
+	return err
+}
+
+// removeAcceptedFollow reverses applyAcceptedFollow.
+func removeAcceptedFollow(ctx context.Context, tx txExec, followerID, followeeID uuid.UUID) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET follower_count = GREATEST(follower_count - 1, 0) WHERE id=$1`, followeeID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET following_count = GREATEST(following_count - 1, 0) WHERE id=$1`, followerID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE follow_entry_agg SET
+			following_notional_sum = GREATEST(following_notional_sum - COALESCE((SELECT notional_sum FROM user_entry_stats WHERE user_id=$2), 0), 0),
+			following_entry_count  = GREATEST(following_entry_count  - COALESCE((SELECT entry_count  FROM user_entry_stats WHERE user_id=$2), 0), 0),
+			updated_at = now()
+		WHERE follower_id=$1`, followerID, followeeID)
 	return err
 }
 
@@ -61,15 +151,20 @@ func (s *Store) FollowRequests(ctx context.Context, userID uuid.UUID) ([]structs
 // caller. Returns the follower id (for notifications) and whether a row was
 // affected.
 func (s *Store) ResolveFollowRequest(ctx context.Context, requestID, followeeID uuid.UUID, approve bool) (uuid.UUID, bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	defer tx.Rollback(ctx)
+
 	var followerID uuid.UUID
-	var err error
 	if approve {
-		err = s.pool.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
 			UPDATE follows SET status='accepted'
 			WHERE id=$1 AND followee_id=$2 AND status='pending'
 			RETURNING follower_id`, requestID, followeeID).Scan(&followerID)
 	} else {
-		err = s.pool.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
 			DELETE FROM follows
 			WHERE id=$1 AND followee_id=$2 AND status='pending'
 			RETURNING follower_id`, requestID, followeeID).Scan(&followerID)
@@ -78,6 +173,15 @@ func (s *Store) ResolveFollowRequest(ctx context.Context, requestID, followeeID 
 		return uuid.Nil, false, nil
 	}
 	if err != nil {
+		return uuid.Nil, false, err
+	}
+	// Approving a request is an accepted follow: maintain counters + aggregate.
+	if approve {
+		if err := applyAcceptedFollow(ctx, tx, followerID, followeeID); err != nil {
+			return uuid.Nil, false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return uuid.Nil, false, err
 	}
 	return followerID, true, nil
